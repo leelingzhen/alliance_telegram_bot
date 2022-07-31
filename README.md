@@ -30,7 +30,9 @@ script_venv\Scripts\activate
 
 run the script:
 
-`python main_script.py`
+```
+python main_script.py
+```
 
 
 
