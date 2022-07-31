@@ -1,0 +1,4 @@
+<b>Training plan for {date}</b>
+<u>test </u>
+test
+test

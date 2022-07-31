@@ -1,0 +1,1 @@
+It seems you have not indicated your attendance for {date}. Please remember to indicate your attendance for training on {date} or let Owen know your attendance!
