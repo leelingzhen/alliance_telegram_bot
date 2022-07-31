@@ -3,6 +3,7 @@ from telegram_bot import send_custom_message
 import argparse
 import pandas as pd
 import os
+from progress.bar import Bar
 
 DEVELOPMENT = True
 
@@ -65,22 +66,24 @@ def main():
         print("Writing completed.")
     
     if args.send_msg:
-        print("sending telegram messages...")
         unsucessful_sends = list()
         training_date = date_list[option].date().strftime('%d-%b-%y, %A')
         training_msg = read_msg_from_file(os.path.join("messages", "training_message.txt"), training_date)
         not_indicated_msg = read_msg_from_file(os.path.join("messages", "not_indicated_message.txt"), training_date)
-        for name in attendance_dict["attending"] + attendance_dict["not indicated"]:
-            if DEVELOPMENT:
-                name_id = player_profiles.loc["Lee Ling Zhen"]["telegram_id"]
-            else:
-                name_id = player_profiles.loc[name]["telegram_id"]
-            send_status = send_custom_message(training_msg, name_id)
-            if name in attendance_dict["not indicated"]:
-                send_status = send_custom_message(not_indicated_msg, name_id)
-            print(f"send status for {name} : {send_status}")
-            if not send_status:
-                unsucessful_sends.append(name)
+        name_lst_send = attendance_dict["attending"] + attendance_dict["not indicated"]
+        with Bar("sending telegram messages...", max=len(name_lst_send)) as bar:
+            for name in name_lst_send:
+                if DEVELOPMENT:
+                    name_id = player_profiles.loc["Lee Ling Zhen"]["telegram_id"]
+                else:
+                    name_id = player_profiles.loc[name]["telegram_id"]
+                send_status = send_custom_message(training_msg, name_id)
+                if name in attendance_dict["not indicated"]:
+                    send_status = send_custom_message(not_indicated_msg, name_id)
+                #print(f"send status for {name} : {send_status}")
+                if not send_status:
+                    unsucessful_sends.append(name)
+                bar.next()
         print("\nsending complete. list of uncomplete sends:")
         for name in unsucessful_sends:
             print(name)
