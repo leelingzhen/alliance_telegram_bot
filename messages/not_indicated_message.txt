@@ -1,1 +1,3 @@
-It seems you have not indicated your attendance for {date}. Please remember to indicate your attendance for training on {date} or let Owen know your attendance!
+Hey you there! YES YOU THERE 🫵🏻 it seems you have not indicated your attendance 🧐 for {date}. 
+Please remember to update your attendance in this <u><a href="https://docs.google.com/spreadsheets/d/1hdM6oWpT-riNmab2FEQV9k0RYb9hHDSIvjAzzx-3bmw/edit?hl=en#gid=1668586469">spread sheet</a></u>.
+If you do not have access to the spread sheet you may let <a href="tg://user?id=161579060">Owen</a> know if you are coming!
