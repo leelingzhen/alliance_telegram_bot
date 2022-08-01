@@ -7,8 +7,8 @@ from progress.bar import Bar
 
 DEVELOPMENT = True
 
-def read_msg_from_file(filename, date_str : str):
-    with open(filename, "r") as f:
+def read_msg_from_file(filename, date_str: str) -> str:
+    with open(filename, "r", encoding="utf-8") as f:
         msg = f.read().replace("{date}", date_str).rstrip()
     return msg
 
