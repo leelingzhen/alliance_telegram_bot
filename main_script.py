@@ -1,4 +1,4 @@
-from read_attendance import get_player_profiles, get_attendance_df, active_date_list, get_participants, gender_sorter
+import alliance
 from telegram_bot import send_custom_message
 import argparse
 import pandas as pd
@@ -15,15 +15,16 @@ def read_msg_from_file(filename, date_str: str) -> str:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--choose_date", type=bool, help="type --choose_date True if you would like to choose a specific training date")
-    parser.add_argument("--send_msg", type=bool, help="type --send_msg True if you would like to send telegram messages through alliance bot")
+    parser.add_argument("--send_training_msg", type=int, help="0 - do not send training_message, 1-send messages to attending and not indicated only, 2-send to all")
+    parser.add_argument("--send_reminders", type=bool, help="set to 1 to send messages to players who have not indicated.")
     args = parser.parse_args()
     if DEVELOPMENT:
         print("Development Mode on.")
     print("Parsing player profiles...")
-    player_profiles = get_player_profiles(100)
+    player_profiles = alliance.get_player_profiles(100)
     print("Parsing attendance sheet...")
-    sheet_df = get_attendance_df(100)
-    date_list = active_date_list(sheet_df.columns)
+    sheet_df = alliance.get_attendance_df(100)
+    date_list = alliance.active_date_list(sheet_df.columns)
     if args.choose_date:
         option = len(date_list)
         while option == len(date_list):
@@ -44,8 +45,8 @@ def main():
     else:
         option = 0
         
-    attendance_dict = get_participants(sheet_df, date_list[option].date(), player_profiles)
-    attending_male, attending_female = gender_sorter(attendance_dict["attending"], player_profiles)
+    attendance_dict = alliance.get_participants(sheet_df, date_list[option].date(), player_profiles)
+    attending_male, attending_female = alliance.gender_sorter(attendance_dict["attending"], player_profiles)
     
     ## writing outfile
     with open(f'sorted_attendance_{date_list[option].date().strftime("%d-%m-%y,%A")}.txt', "w") as f:
@@ -65,12 +66,15 @@ def main():
             f.write(name + "\n")
         print("Writing completed.")
     
-    if args.send_msg:
+    training_date = date_list[option].date().strftime('%d-%b-%y, %A')
+
+    if args.send_training_msg:
         unsucessful_sends = list()
-        training_date = date_list[option].date().strftime('%d-%b-%y, %A')
         training_msg = read_msg_from_file(os.path.join("messages", "training_message.txt"), training_date)
-        not_indicated_msg = read_msg_from_file(os.path.join("messages", "not_indicated_message.txt"), training_date)
-        name_lst_send = attendance_dict["attending"] + attendance_dict["not indicated"]
+        if args.send_training_msg == 1:
+            name_lst_send = attendance_dict["attending"] + attendance_dict["not indicated"]
+        elif args.send_training_msg == 2:
+            name_lst_send = attendance_dict["attending"] + attendance_dict["not indicated"] + attendance_dict["absent"]
         with Bar("sending telegram messages...", max=len(name_lst_send)) as bar:
             for name in name_lst_send:
                 if DEVELOPMENT:
@@ -78,15 +82,28 @@ def main():
                 else:
                     name_id = player_profiles.loc[name]["telegram_id"]
                 send_status = send_custom_message(training_msg, name_id)
-                if name in attendance_dict["not indicated"]:
-                    send_status = send_custom_message(not_indicated_msg, name_id)
-                #print(f"send status for {name} : {send_status}")
+#               print(f"send status for {name} : {send_status}")
                 if not send_status:
                     unsucessful_sends.append(name)
                 bar.next()
-        print("\nsending complete. list of uncomplete sends:")
+        print("\nSending training messages complete. list of uncomplete sends:")
         for name in unsucessful_sends:
             print(name)
+
+    if args.send_reminders:
+        not_indicated_msg = read_msg_from_file(os.path.join("messages", "not_indicated_message.txt"), training_date)
+        name_lst_send = attendance_dict["not indicated"]
+        with Bar("sending reminders who havent indicated attendance...", max=len(name_lst_send)) as bar:
+            for name in name_lst_send:
+                if DEVELOPMENT:
+                    name_id = player_profiles.loc["Lee Ling Zhen"]["telegram_id"]
+                else:
+                    name_id = player_profiles.loc[name]["telegram_id"]
+                send_status = send_custom_message(not_indicated_msg, name_id)
+#               print(f"send status for {name} : {send_status}")
+                bar.next()
+        print("Sending reminders complete.")
+
             
 
 

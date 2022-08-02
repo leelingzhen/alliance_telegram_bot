@@ -40,6 +40,8 @@ def get_participants(df, target_date, player_profiles):
     for player in inactive_players:
         if player in attendance_dict["not indicated"]:
             attendance_dict["not indicated"].remove(player)
+        if player in attendance_dict["absent"]:
+            attendance_dict["absent"].remove(player)
     return attendance_dict
 
 def gender_sorter(name_list, player_profiles):
@@ -77,6 +79,7 @@ def active_date_list(date_list, target_date=date.today()):
     return []
 
 
+'''
 if __name__ == "__main__":
 
     player_profiles = get_player_profiles(100)
@@ -86,3 +89,4 @@ if __name__ == "__main__":
     print(attendance_dict)
 #stats = attendance_stats(attendance_dict, player_profiles)
 player_profiles = get_player_profiles(100)
+'''

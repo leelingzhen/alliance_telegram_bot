@@ -34,17 +34,12 @@ run the script:
 python main_script.py
 ```
 
+|flags |options |Description
+|---|---|---|
+|`--choose_date` | `True`, `False`| gives you the option to choose from a list of dates otherwise default would be the earliest training date|
+|`--send_training_msg` |`0`, `1`, `2`| 0 will not send any message, 1 will send messages to "attending" and "not indicated" players, 2 will send to everyone|
+|`--send_reminders` |`True`, `False`|give you the option to send reminders|
 
-
-flags:
-
-`--choose_date True`
-
-gives you the option to choose from a list of dates otherwise default would be the earliest training date
-
-`--send_msg True`
-
-send messages to telegram users
 
 ## Custom messages
-messages uses html tags to format text, messages used by the bot are found in `messages` directory. You may edit the .txt files but do not rename the files. 
+messages uses html tags to format text, messages used by the bot are found in `messages` directory. You may edit the .txt files but do not rename the files. `{date}` can be used as a place holder for the intended training date. formatted in d/mmm/yyyy, weekday.
