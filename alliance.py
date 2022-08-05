@@ -54,6 +54,17 @@ def gender_sorter(name_list, player_profiles):
             female_list.append(name)
     return male_list, female_list
 
+def user_attendance_status(user_id: str,date_query):
+    df = get_attendance_df(100)
+    player_profiles = get_player_profiles(100)
+    name = player_profiles.index[player_profiles["telegram_id"] == int(user_id)]
+    status = df[date_query.strftime("%Y-%m-%d")][name][0]
+    if status == "Yes" or status == "No":
+        return status
+    else:
+        return "Not indicated"
+
+
 def attendance_stats(attendance_df, player_profiles):
     n_attending = len(attendance_df["attending"])
     attending_m, attending_f = gender_sorter(attendance_df["attending"], player_profiles)
@@ -90,3 +101,4 @@ if __name__ == "__main__":
 #stats = attendance_stats(attendance_dict, player_profiles)
 player_profiles = get_player_profiles(100)
 '''
+sheet_df = get_attendance_df(100)
