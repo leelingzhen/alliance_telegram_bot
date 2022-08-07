@@ -63,15 +63,7 @@ def start(update: Update, context: CallbackContext) -> None:
             chat_id=update.effective_user.id,
             text=f'Please use the commands to talk to me!'
             )
-@send_typing_action
-def help_f(update: Update, context: CallbackContext) -> None:
-    context.bot.send_message(
-            chat_id=update.effective_user.id,
-            text=f'I help the lazy bums in alliance fill up their attendance on the google sheets.\n\n'
-            'You can use my functions by sending these commands:\n\n'
-            '/attendance - to begin filling up your attendance on the google sheet\n'
-            '/cancel - cancels whatever process you are doing\n'
-            )
+
 
 def print_date_buttons():
     df = alliance.get_attendance_df(100)
@@ -83,13 +75,13 @@ def print_date_buttons():
         button = InlineKeyboardButton(text=date_str, callback_data=callback_data)
         buttons.append([button])
     reply_markup = InlineKeyboardMarkup(buttons)
-    return df, reply_markup
+    return reply_markup
 
 @send_typing_action
 def choosing_date(update: Update, context: CallbackContext) -> str:
     user = update.effective_user
     logger.info("User %s is filling up his/her attendance...", user.first_name)
-    df, reply_markup = print_date_buttons()
+    reply_markup = print_date_buttons()
     update.message.reply_text("Choose Training Date:", reply_markup=reply_markup)
     return "indicate_attendance"
 
@@ -109,15 +101,20 @@ def indicate_attendance(update: Update, context: CallbackContext) -> str:
     #buttons should have call back data of "yes" or "no"
     query = update.callback_query
     query.answer()
+    query.edit_message_text(
+            text="Loading..."
+            )
+    attendance_df, player_profiles = alliance.get_2_dataframes()
     user_id = update.effective_user.id
     date_query = datetime.strptime(query.data,"%d-%m-%Y")
+    row, column = alliance.cell_location(user_id, date_query, attendance_df, player_profiles)
     button = [
-            [InlineKeyboardButton("Yes I ❤️ frisbee", callback_data=f"Y,{date_query}")],
-            [InlineKeyboardButton("No (lame)", callback_data=f"N,{date_query}")],
+            [InlineKeyboardButton("Yes I ❤️ frisbee", callback_data=f"Y,{row},{column},{date_query}")],
+            [InlineKeyboardButton("No (lame)", callback_data=f"N,{row},{column},{date_query}")],
             ]
     reply_markup = InlineKeyboardMarkup(button)
     #run script to update attendance here
-    status = alliance.user_attendance_status(user_id, date_query)
+    status = alliance.user_attendance_status(user_id, date_query, attendance_df, player_profiles)
     query.edit_message_text(
             text=f"Your attendance is indicated as \'{status}\'\n"
             "Would you like to go for training?",
@@ -131,26 +128,50 @@ def update_attendance(update: Update, context: CallbackContext) -> str:
     #buttons should have call back data of "update another date", "done"
     query = update.callback_query
     query.answer()
-    print(query.data)
+    alliance.update_cell(query.data)
     button = [
             [InlineKeyboardButton("update attendance again!", callback_data="choose_date")],
             [InlineKeyboardButton("Bye", callback_data="done")],
             ]
     reply_markup = InlineKeyboardMarkup(button)
+    if query.data[0] == "Y":
+        text = "See you at training! 🦾🦾"
+    elif query.data[0] == "N":
+        text = "Hope to see you 🥲🥲"
     query.edit_message_text(
-            text="Well done! you have updated your attendance.", reply_markup=reply_markup
+            text=text, reply_markup=reply_markup
             )
     logger.info("User %s has filled up his/her attendance...", update.effective_user.first_name)
     return "finish"
 
-@send_typing_action
 def end_update_attendance(update:Update, context: CallbackContext) -> int:
     query = update.callback_query
     query.answer()
     query.edit_message_text(
-            text="Thank you for using me to update your attendance🦾🦾! meep morp🤖🤖"
+            text="meep morp🤖🤖"
             )
     return ConversationHandler.END
+
+@send_typing_action
+def training_dates(update:Update, context: CallbackContext) -> None:
+    attendance_df, player_profiles = alliance.get_2_dataframes()
+    user_id = update.effective_user.id
+    date_arr = alliance.get_training_dates(attendance_df, player_profiles, user_id)
+    date_s = ""
+    for date in date_arr:
+        date_s += date.strftime("%d-%b-%y, %a") + '\n'
+    update.message.reply_text(f'your training dates are: \n{date_s}')
+
+
+@send_typing_action
+def help_f(update: Update, context: CallbackContext) -> None:
+    context.bot.send_message(
+            chat_id=update.effective_user.id,
+            text=f'I help the lazy bums in alliance fill up their attendance on the google sheets.\n\n'
+            'You can use my functions by sending these commands:\n\n'
+            '/attendance - to begin filling up your attendance on the google sheet\n'
+            '/cancel - cancels whatever process you are doing\n'
+            )
 
 @send_typing_action
 def cancel(update:Update, context: CallbackContext) -> int:
@@ -169,6 +190,7 @@ def main():
     commands = [
             BotCommand("start", "to start a the bot"),
             BotCommand("attendance", "to update attendance on alliance gsheets"),
+            BotCommand("trainings", "to give you a list of training dates you are attending"),
             BotCommand("cancel", "cancel any existing operation"),
             BotCommand("help", "help"),
             ]
@@ -199,6 +221,7 @@ def main():
 
     dispatcher.add_handler(conv_handler_attendance)
     dispatcher.add_handler(CommandHandler("start", start))
+    dispatcher.add_handler(CommandHandler("trainings", training_dates))
     dispatcher.add_handler(CommandHandler("help", help_f))
 
     updater.start_polling()

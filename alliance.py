@@ -11,6 +11,41 @@ def get_dataframe(sheetname):
     df = pd.DataFrame(ws.get_all_records())
     return df
 
+def get_2_dataframes(sheetname1="Alliance Attendance 2022", sheetname2="Player Profiles", excess_rows=100):
+    service_acc = gspread.service_account(filename=os.path.join(".secrets", "credentials.json"))
+    workbook = service_acc.open("Alliance Training Attendance")
+    ws_1 = workbook.worksheet(sheetname1)
+    ws_2 = workbook.worksheet(sheetname2)
+    df_1 = pd.DataFrame(ws_1.get_all_records())
+    df_2 = pd.DataFrame(ws_2.get_all_records())
+    df_1.columns = pd.to_datetime(df_1.columns)
+    df_1 = df_1[:excess_rows]
+    df_1 = df_1.set_index(df_1.iloc[:,0])
+    df_1= df_1.iloc[:,1:]
+    df_1= df_1.replace("",np.nan)
+    df_1 = df_1.dropna(how='all')
+    df_1 = df_1.drop(axis=0, index="Total")
+    df_2 = df_2.set_index("names")
+
+    return df_1, df_2
+
+def get_training_dates(attendance_df, player_profiles, user_id) -> list:
+    name = player_profiles.index[player_profiles["telegram_id"] == int(user_id)][0]
+    df = attendance_df.loc[name].where(attendance_df.loc[name] == "Yes")
+    df = df.dropna()
+    date_arr = df.index.where(df.index.date >= date.today()).dropna().date
+    return date_arr
+
+
+def update_cell(data: str, sheetname="Alliance Attendance 2022"):
+    value, row, column, date = data.split(",")
+    value = "Yes" if value == "Y" else "No"
+    service_acc = gspread.service_account(filename=os.path.join(".secrets", "credentials.json"))
+    workbook = service_acc.open("Alliance Training Attendance")
+    ws = workbook.worksheet(sheetname)
+    ws.update_cell(row, column, value)
+
+
 def get_attendance_df(excess_rows):
     attendance_df = get_dataframe("Alliance Attendance 2022")
     attendance_df.columns = pd.to_datetime(attendance_df.columns)
@@ -54,15 +89,20 @@ def gender_sorter(name_list, player_profiles):
             female_list.append(name)
     return male_list, female_list
 
-def user_attendance_status(user_id: str,date_query):
-    df = get_attendance_df(100)
-    player_profiles = get_player_profiles(100)
+def user_attendance_status(user_id: str,date_query, attendance_df, player_profiles):
     name = player_profiles.index[player_profiles["telegram_id"] == int(user_id)]
-    status = df[date_query.strftime("%Y-%m-%d")][name][0]
+    status = attendance_df[date_query.strftime("%Y-%m-%d")][name][0]
     if status == "Yes" or status == "No":
         return status
     else:
         return "Not indicated"
+
+def cell_location(user_id, date_query, attendance_df, player_profiles):
+    name = player_profiles.index[player_profiles["telegram_id"] == int(user_id)][0]
+    row = attendance_df.index.get_loc(name) + 2
+    date_query = date_query.strftime("%Y-%m-%d")
+    column = attendance_df.columns.get_loc(date_query) + 2
+    return row, column
 
 
 def attendance_stats(attendance_df, player_profiles):

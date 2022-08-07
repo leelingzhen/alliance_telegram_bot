@@ -5,7 +5,7 @@ import pandas as pd
 import os
 from progress.bar import Bar
 
-DEVELOPMENT = True
+DEVELOPMENT = False
 
 def read_msg_from_file(filename, date_str: str) -> str:
     with open(filename, "r", encoding="utf-8") as f:
