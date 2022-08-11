@@ -144,7 +144,7 @@ def update_attendance(update: Update, context: CallbackContext) -> str:
     alliance.update_cell(query.data)
     button = [
             [InlineKeyboardButton("update attendance again!", callback_data="choose_date")],
-            [InlineKeyboardButton("Bye", callback_data="done")],
+            [InlineKeyboardButton("bye", callback_data="done")],
             ]
     reply_markup = InlineKeyboardMarkup(button)
     if query.data[0] == "Y":
@@ -174,7 +174,7 @@ def training_dates(update:Update, context: CallbackContext) -> None:
     date_s = ""
     for date in date_arr:
         date_s += date.strftime("%d-%b-%y, %a") + '\n'
-    update.message.reply_text(f'your training dates are: \n{date_s}')
+    update.message.reply_text(f'you have registered for training on dates: \n\n{date_s}\n\nSee you then!😎')
 
 
 @send_typing_action

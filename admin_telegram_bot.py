@@ -304,8 +304,7 @@ def send_message(update:Update, context:CallbackContext) -> None:
             f"sending announcements... {i+1}/{len(active_players)}"
                 )
     admin_msg.edit_text(
-            "Sending announcements complete. list of uncompleted sends: \n\n" + unsends,
-            reply_markup=ReplyKeyboardRemove()
+            "Sending announcements complete. list of uncompleted sends: \n\n" + unsends
             )
     logger.info("User %s sucessfully sent announcements", user.first_name)
 
