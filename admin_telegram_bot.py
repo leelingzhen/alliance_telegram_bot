@@ -735,7 +735,7 @@ def main():
     conv_handler_remove_admin = ConversationHandler(
             entry_points=[CommandHandler('remove_admin', get_id_remove_admin)],
             states={
-                1:[MessageHandler(Filters.text, remove_admin)],
+                1:[MessageHandler(Filters.text & ~Filters.command, remove_admin)],
                 },
             fallbacks=[CommandHandler('cancel', cancel)],
             )
