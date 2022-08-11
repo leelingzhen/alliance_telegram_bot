@@ -1,4 +1,5 @@
 import gspread
+import json
 import pandas as pd
 import numpy as np
 from datetime import date
@@ -122,6 +123,11 @@ def attendance_stats(attendance_df, player_profiles):
             "female not indcated": not_indicated_f
             }
 
+def read_msg_from_file(filename, date_str: str) -> str:
+    with open(filename, "r", encoding="utf-8") as text_f:
+        msg = text_f.read().replace("{date}", date_str).rstrip()
+    return msg
+
 def active_date_list(date_list, target_date=date.today()):
     for i, date_element in enumerate(date_list):
         date_element = date_element.date()
@@ -129,16 +135,3 @@ def active_date_list(date_list, target_date=date.today()):
             return date_list[i:]
     return []
 
-
-'''
-if __name__ == "__main__":
-
-    player_profiles = get_player_profiles(100)
-    sheet_df = get_attendance_df(100)
-    date_list = active_date_list (sheet_df.columns)
-    attendance_dict = get_participants(sheet_df, date_list[1].date(), player_profiles)
-    print(attendance_dict)
-#stats = attendance_stats(attendance_dict, player_profiles)
-player_profiles = get_player_profiles(100)
-'''
-sheet_df = get_attendance_df(100)

@@ -1,6 +1,7 @@
 import logging
 import os
 import alliance
+import json
 
 from datetime import date, datetime
 from functools import wraps
@@ -37,6 +38,20 @@ def read_token(filename: str) -> str:
         token = f.read().rstrip()
     return token
 
+def restricted(func):
+    """Restrict usage of func to allowed users only and replies if necessary"""
+    @wraps(func)
+    def wrapped(update, context, *args, **kwargs):
+        with open(os.path.join(".secrets", "membership.json"), "r") as f:
+            member_dict = json.load(f)
+        user_id = update.effective_user.id
+        if user_id not in member_dict['members']:
+            print("WARNING: Unauthorized access denied for {}.".format(user_id))
+            update.message.reply_text('you do not have access to this bot, please contact adminstrators')
+            return  # quit function
+        return func(update, context, *args, **kwargs)
+    return wrapped
+
 def send_typing_action(func):
     """Sends typing action while processing func command."""
 
@@ -48,17 +63,12 @@ def send_typing_action(func):
     return command_func
 
 @send_typing_action
+@restricted
 def start(update: Update, context: CallbackContext) -> None:
     """Send a message when the command /start is issued."""
     user = update.effective_user
     user_id = update.message.from_user.id
     logger.info("User %s has talked to the bot!", user.first_name)
-    update.message.reply_markdown_v2(
-        #fr'Hi {user.mention_markdown_v2()}\!',
-        fr'Hi {user.username}, Hi {user_id}, Hi {user.id}, repeating what you said: {update.message.text}',
-        #force replies
-        #reply_markup=ForceReply(selective=False),
-    )
     context.bot.send_message(
             chat_id=update.effective_user.id,
             text=f'Please use the commands to talk to me!'
@@ -77,7 +87,9 @@ def print_date_buttons():
     reply_markup = InlineKeyboardMarkup(buttons)
     return reply_markup
 
+
 @send_typing_action
+@restricted
 def choosing_date(update: Update, context: CallbackContext) -> str:
     user = update.effective_user
     logger.info("User %s is filling up his/her attendance...", user.first_name)
@@ -96,7 +108,6 @@ def choosing_date_again(update: Update, context:CallbackContext) -> str:
     return "indicate_attendance"
 
 
-@send_typing_action
 def indicate_attendance(update: Update, context: CallbackContext) -> str:
     #buttons should have call back data of "yes" or "no"
     query = update.callback_query
@@ -122,12 +133,14 @@ def indicate_attendance(update: Update, context: CallbackContext) -> str:
             )
     return "update_attendance"
 
-@send_typing_action
 def update_attendance(update: Update, context: CallbackContext) -> str:
     #run script to update the persons attendance on the sheet
     #buttons should have call back data of "update another date", "done"
     query = update.callback_query
     query.answer()
+    query.edit_message_text(
+            text="Loading..."
+            )
     alliance.update_cell(query.data)
     button = [
             [InlineKeyboardButton("update attendance again!", callback_data="choose_date")],
@@ -153,6 +166,7 @@ def end_update_attendance(update:Update, context: CallbackContext) -> int:
     return ConversationHandler.END
 
 @send_typing_action
+@restricted
 def training_dates(update:Update, context: CallbackContext) -> None:
     attendance_df, player_profiles = alliance.get_2_dataframes()
     user_id = update.effective_user.id
@@ -171,20 +185,25 @@ def help_f(update: Update, context: CallbackContext) -> None:
             'You can use my functions by sending these commands:\n\n'
             '/attendance - to begin filling up your attendance on the google sheet\n'
             '/cancel - cancels whatever process you are doing\n'
+            "/trainings - gives you a list of training dates you have signed up for\n"
             )
 
 @send_typing_action
 def cancel(update:Update, context: CallbackContext) -> int:
-    context.bot.send_message(chat_id=update.effective_chat.id,
+    update.message.reply_text(
             text="process cancelled, see you next time!"
             )
     return ConversationHandler.END
 
 def main():
+
+    with open(os.path.join(".secrets", "bot_credentials.json"), "r") as f:
+            bot_tokens = json.load(f)
+
     if DEVELOPMENT:
-        token = read_token(os.path.join(".secrets", "development_bot_token.txt"))
+        token = bot_tokens['dev_bot']
     else:
-        token = read_token(os.path.join(".secrets", "bot_token.txt"))
+        token = bot_tokens['alliance_bot']
 
     #setting command list
     commands = [
@@ -223,6 +242,7 @@ def main():
     dispatcher.add_handler(CommandHandler("start", start))
     dispatcher.add_handler(CommandHandler("trainings", training_dates))
     dispatcher.add_handler(CommandHandler("help", help_f))
+    dispatcher.add_handler(CommandHandler("cancel", cancel))
 
     updater.start_polling()
     updater.idle()
