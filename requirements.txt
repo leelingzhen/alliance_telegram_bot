@@ -5,4 +5,3 @@ pandas
 gspread
 oauth2client
 python-telegram-bot
-progress

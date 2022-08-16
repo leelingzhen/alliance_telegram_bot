@@ -105,24 +105,6 @@ def cell_location(user_id, date_query, attendance_df, player_profiles):
     column = attendance_df.columns.get_loc(date_query) + 2
     return row, column
 
-
-def attendance_stats(attendance_df, player_profiles):
-    n_attending = len(attendance_df["attending"])
-    attending_m, attending_f = gender_sorter(attendance_df["attending"], player_profiles)
-    n_absent = len(attendance_df["absent"])
-    n_not_indicated = len(attendance_df["not indicated"])
-    not_indicated_m, not_indicated_f = gender_sorter(attendance_df["not indicated"], player_profiles)
-
-    return {"attending" : n_attending,
-            "male attending" : attending_m,
-            "female attending": attending_f,
-            "num absent": n_absent,
-            "absent": list(attendance_df["absent"]),
-            "not indicated" :n_not_indicated,
-            "male not indicated": not_indicated_m,
-            "female not indcated": not_indicated_f
-            }
-
 def read_msg_from_file(filename, date_str: str) -> str:
     with open(filename, "r", encoding="utf-8") as text_f:
         msg = text_f.read().replace("{date}", date_str).rstrip()

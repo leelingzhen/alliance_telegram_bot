@@ -67,7 +67,6 @@ def send_typing_action(func):
 def start(update: Update, context: CallbackContext) -> None:
     """Send a message when the command /start is issued."""
     user = update.effective_user
-    user_id = update.message.from_user.id
     logger.info("User %s has talked to the bot!", user.first_name)
     context.bot.send_message(
             chat_id=update.effective_user.id,
@@ -77,7 +76,7 @@ def start(update: Update, context: CallbackContext) -> None:
 
 def print_date_buttons():
     df = alliance.get_attendance_df(100)
-    date_ls = alliance.active_date_list(df.columns)
+    date_ls = alliance.active_date_list(df.columns, date.today())
     buttons = list()
     for date_option in date_ls:
         date_str = date_option.date().strftime("%d-%b-%y, %A")
@@ -113,7 +112,7 @@ def indicate_attendance(update: Update, context: CallbackContext) -> str:
     query = update.callback_query
     query.answer()
     query.edit_message_text(
-            text="Loading..."
+            text="Loading gsheets..."
             )
     attendance_df, player_profiles = alliance.get_2_dataframes()
     user_id = update.effective_user.id
@@ -124,7 +123,10 @@ def indicate_attendance(update: Update, context: CallbackContext) -> str:
             [InlineKeyboardButton("No (lame)", callback_data=f"N,{row},{column},{date_query}")],
             ]
     reply_markup = InlineKeyboardMarkup(button)
-    #run script to update attendance here
+    query.edit_message_text(
+            text="Loading gsheets...\n"
+            "Searching for your name..."
+            )
     status = alliance.user_attendance_status(user_id, date_query, attendance_df, player_profiles)
     query.edit_message_text(
             text=f"Your attendance is indicated as \'{status}\'\n"
@@ -139,7 +141,7 @@ def update_attendance(update: Update, context: CallbackContext) -> str:
     query = update.callback_query
     query.answer()
     query.edit_message_text(
-            text="Loading..."
+            text="updating your attendance on gsheets..."
             )
     alliance.update_cell(query.data)
     button = [
@@ -175,6 +177,7 @@ def training_dates(update:Update, context: CallbackContext) -> None:
     for date in date_arr:
         date_s += date.strftime("%d-%b-%y, %a") + '\n'
     update.message.reply_text(f'you have registered for training on dates: \n\n{date_s}\n\nSee you then!😎')
+    logger.info("User %s has queried for his/her training schedule...", update.effective_user.first_name)
 
 
 @send_typing_action

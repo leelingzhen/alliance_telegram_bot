@@ -61,7 +61,7 @@ def send_custom_msg(msg: str, chat_id: str, bot_messenger: Bot, parse_mode=None,
 
 def print_date_buttons():
     df = alliance.get_attendance_df(100)
-    date_ls = alliance.active_date_list(df.columns)
+    date_ls = alliance.active_date_list(df.columns, target_date=date.today())
     buttons = list()
     for date_option in date_ls:
         date_str = date_option.date().strftime("%d-%b-%y, %A")
@@ -583,12 +583,12 @@ def remove_member(update:Update, context: CallbackContext) -> int:
 @send_typing_action
 @restricted_admin
 def show_members(update:Update, context: CallbackContext) -> None:
-    output_msg = update.message.reply_text("getting members...")
     token = get_tokens()["alliance_bot"]
     bot = Bot(token=token)
     members = get_membership()["members"]
     members_lst = list()
-    for member_id in members:
+    output_msg = update.message.reply_text(f"getting members... 0/{len(members)}")
+    for i, member_id in enumerate(members):
         try:
             user = bot.get_chat(member_id)
         except (BadRequest, Unauthorized):
@@ -598,6 +598,7 @@ def show_members(update:Update, context: CallbackContext) -> None:
             members_lst.append("Hidden " + str(member_id))
             continue
         members_lst.append(f"@{user.username}")
+        output_msg.edit_text(f"getting members... {i}/{len(members)}")
     text = f"Members: ({len(members_lst)})\n\n"
     for member in members_lst:
         text += member + "\n"
@@ -611,7 +612,9 @@ def show_admins(update:Update, context: CallbackContext) -> None:
     bot = Bot(token=token)
     admins = get_membership()["admins"]
     admin_lst = list()
-    for admin_id in admins:
+    text = f'Loading admins 0/{len(admins)}'
+    txt_msg = update.message.reply_text(text)
+    for i, admin_id in enumerate(admins):
         try:
             user = bot.get_chat(admin_id)
         except (BadRequest, Unauthorized):
@@ -621,10 +624,12 @@ def show_admins(update:Update, context: CallbackContext) -> None:
             admin_lst.append("Hidden " + str(admin_id))
             continue
         admin_lst.append(f"@{user.username}")
+        text = f'Loading admins {i+1}/{len(admins)}'
+        txt_msg.edit_text(text)
     text = f"Admins: ({len(admin_lst)})\n\n"
     for admin in admin_lst:
         text += admin + "\n"
-    update.message.reply_text(text)
+    txt_msg.edit_text(text)
     return None
 
 
