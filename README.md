@@ -32,3 +32,8 @@ in docker-compose.yml, use the following to run the containers
 ## Stopping containers
 containers must be killed if not python script my persist running which will conflict with a new instance of telegram bot. 
 in that case rebuild containers or revoke bot access token.
+containers can be stopped by
+```
+docker kill alliance_training_telegram_bot
+docker kill alliance_admin_telegram_bot
+```
