@@ -598,7 +598,7 @@ def show_members(update:Update, context: CallbackContext) -> None:
             members_lst.append("Hidden " + str(member_id))
             continue
         members_lst.append(f"@{user.username}")
-        output_msg.edit_text(f"getting members... {i}/{len(members)}")
+        output_msg.edit_text(f"getting members... {i+1}/{len(members)}")
     text = f"Members: ({len(members_lst)})\n\n"
     for member in members_lst:
         text += member + "\n"
