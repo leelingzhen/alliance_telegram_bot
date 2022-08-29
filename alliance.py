@@ -2,9 +2,57 @@ import gspread
 import json
 import pandas as pd
 import numpy as np
-from datetime import date
+from datetime import date, datetime
 import os
 
+
+#new code implementations
+def clean_attendance_df(df, excess_rows=100):
+    df.columns = pd.to_datetime(df.columns, errors='coerce', format='%a, %d-%m-%y @ %H:%M')
+    df = df[:excess_rows]
+    df = df.set_index(df.iloc[:,0])
+    df = df.iloc[:,1:]
+    df = df.replace("",np.nan)
+    df = df.dropna(how='all')
+    df = df.drop(axis=0, index="Total")
+    return df
+
+def clean_player_profiles(df, excess_rows=100):
+    df = df.set_index("names")
+    return df
+
+def clean_details_df(df, excess_rows=100):
+    df.columns = pd.to_datetime(df.columns, errors='coerce', format='%a, %d-%m-%y @ %H:%M')
+    df = df.set_index(df.iloc[:,0])
+    df = df.iloc[:,1:]
+    return df
+
+def get_sheet_records(
+        workbook_name="Alliance Training Attendance",
+        player_profiles="Player Profiles",
+        attendance="Alliance Attendance (Beta)",
+        details="Training Details (Beta)"):
+    service_acc = gspread.service_account(filename=os.path.join(".secrets", "credentials.json"))
+    workbook = service_acc.open(workbook_name)
+
+    #cleaning attendance df
+    attendance_ws = workbook.worksheet(attendance)
+    attendance_df = pd.DataFrame(attendance_ws.get_all_records())
+    attendance_df = clean_attendance_df(attendance_df)
+
+    #cleaning player_profiles
+    pp_ws = workbook.worksheet(player_profiles)
+    player_profiles_df = pd.DataFrame(pp_ws.get_all_records())
+    player_profiles_df = clean_player_profiles(player_profiles_df)
+
+    #cleaning details
+    training_ws = workbook.worksheet(details)
+    details_df = pd.DataFrame(training_ws.get_all_records())
+    details_df = clean_details_df(details_df)
+
+    return attendance_df, details_df, player_profiles_df
+
+#old code implementations
 def get_dataframe(sheetname):
     service_acc = gspread.service_account(filename=os.path.join(".secrets", "credentials.json"))
     workbook = service_acc.open("Alliance Training Attendance")
