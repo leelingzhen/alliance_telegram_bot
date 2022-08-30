@@ -36,21 +36,42 @@ def get_sheet_records(
     workbook = service_acc.open(workbook_name)
 
     #cleaning attendance df
-    attendance_ws = workbook.worksheet(attendance)
-    attendance_df = pd.DataFrame(attendance_ws.get_all_records())
-    attendance_df = clean_attendance_df(attendance_df)
+    if attendance:
+        attendance_ws = workbook.worksheet(attendance)
+        attendance_df = pd.DataFrame(attendance_ws.get_all_records())
+        attendance_df = clean_attendance_df(attendance_df)
+    else :
+        attendance_df = None
 
     #cleaning player_profiles
-    pp_ws = workbook.worksheet(player_profiles)
-    player_profiles_df = pd.DataFrame(pp_ws.get_all_records())
-    player_profiles_df = clean_player_profiles(player_profiles_df)
+    if player_profiles:
+        pp_ws = workbook.worksheet(player_profiles)
+        player_profiles_df = pd.DataFrame(pp_ws.get_all_records())
+        player_profiles_df = clean_player_profiles(player_profiles_df)
+    else:
+        player_profiles_df = None
 
     #cleaning details
-    training_ws = workbook.worksheet(details)
-    details_df = pd.DataFrame(training_ws.get_all_records())
-    details_df = clean_details_df(details_df)
+    if details:
+        training_ws = workbook.worksheet(details)
+        details_df = pd.DataFrame(training_ws.get_all_records())
+        details_df = clean_details_df(details_df)
+    else:
+        details_df = None
 
     return attendance_df, details_df, player_profiles_df
+
+def update_cell(
+        cell_location : tuple,
+        indicated_attendance : str,
+        sheetname="Alliance Attendance (Beta)",
+        workbook_name="Alliance Training Attendance"):
+
+    row, column = cell_location[0], cell_location[1]
+    service_acc = gspread.service_account(filename=os.path.join(".secrets", "credentials.json"))
+    workbook = service_acc.open(workbook_name)
+    ws = workbook.worksheet(sheetname)
+    ws.update_cell(row, column, indicated_attendance)
 
 #old code implementations
 def get_dataframe(sheetname):
@@ -82,17 +103,8 @@ def get_training_dates(attendance_df, player_profiles, user_id) -> list:
     name = player_profiles.index[player_profiles["telegram_id"] == int(user_id)][0]
     df = attendance_df.loc[name].where(attendance_df.loc[name] == "Yes")
     df = df.dropna()
-    date_arr = df.index.where(df.index.date >= date.today()).dropna().date
+    date_arr = df.index.where(df.index.date >= date.today()).dropna()
     return date_arr
-
-
-def update_cell(data: str, sheetname="Alliance Attendance 2022"):
-    value, row, column, date = data.split(",")
-    value = "Yes" if value == "Y" else "No"
-    service_acc = gspread.service_account(filename=os.path.join(".secrets", "credentials.json"))
-    workbook = service_acc.open("Alliance Training Attendance")
-    ws = workbook.worksheet(sheetname)
-    ws.update_cell(row, column, value)
 
 
 def get_attendance_df(excess_rows):
@@ -139,8 +151,9 @@ def gender_sorter(name_list, player_profiles):
     return male_list, female_list
 
 def user_attendance_status(user_id: str,date_query, attendance_df, player_profiles):
+    target_date = pd.Timestamp(date_query)
     name = player_profiles.index[player_profiles["telegram_id"] == int(user_id)]
-    status = attendance_df[date_query.strftime("%Y-%m-%d")][name][0]
+    status = attendance_df[target_date][name][0]
     if status == "Yes" or status == "No":
         return status
     else:
@@ -149,7 +162,7 @@ def user_attendance_status(user_id: str,date_query, attendance_df, player_profil
 def cell_location(user_id, date_query, attendance_df, player_profiles):
     name = player_profiles.index[player_profiles["telegram_id"] == int(user_id)][0]
     row = attendance_df.index.get_loc(name) + 2
-    date_query = date_query.strftime("%Y-%m-%d")
+    target_date = pd.Timestamp(date_query)
     column = attendance_df.columns.get_loc(date_query) + 2
     return row, column
 
