@@ -1,4 +1,4 @@
-# A simple python script implementation that manages attendance and send reminders to telegram users by a telegram bot
+# A training attendance manager that uses python-telegram-bot and google sheets api
 
 ## Setup
 for docker implementation, build images separately for admin and telegram bot using 
