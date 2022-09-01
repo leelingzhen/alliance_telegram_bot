@@ -1,6 +1,7 @@
 import logging
 import os
 import alliance
+import pandas as pd
 import json
 
 from datetime import date, datetime, timedelta
@@ -14,6 +15,7 @@ from telegram import (
         ReplyKeyboardRemove,
         InlineKeyboardMarkup,
         ChatAction,
+        CallbackQuery #for type checking
         )
 from telegram.bot import Bot, BotCommand
 from telegram.ext import (
@@ -40,6 +42,7 @@ def get_membership(filename=os.path.join('.secrets', 'membership.json')) -> dict
     with open(filename, 'r') as membership_f:
         membership = json.load(membership_f)
     return membership
+
 def update_membership(membership: dict, filename=os.path.join('.secrets', 'membership.json')) -> None:
     with open(filename, 'w') as membership_f:
         json.dump(membership, membership_f, indent=4)
@@ -59,17 +62,58 @@ def send_custom_msg(msg: str, chat_id: str, bot_messenger: Bot, parse_mode=None,
         return False
     return True
 
-def print_date_buttons():
-    df = alliance.get_attendance_df(100)
-    date_ls = alliance.active_date_list(df.columns, target_date=date.today())
+def print_date_buttons(date_list):
     buttons = list()
-    for date_option in date_ls:
+    date_list = alliance.active_date_list(date_list, target_date=date.today())
+    for date_option in date_list:
         date_str = date_option.date().strftime("%d-%b-%y, %A")
-        callback_data = date_option.date().strftime("%d-%m-%Y")
+        callback_data = date_option.strftime("%d-%m-%Y %H:%M:%S")
         button = InlineKeyboardButton(text=date_str, callback_data=callback_data)
         buttons.append([button])
     reply_markup = InlineKeyboardMarkup(buttons)
     return reply_markup
+
+def get_usernames(player_profiles: pd.DataFrame, name_list: list, token_key="alliance_bot") -> str:
+    bot_token = get_tokens()[token_key]
+    bot = Bot(token=bot_token)
+
+    for name in name_list:
+        chat_id = player_profiles.loc[name]["telegram_id"]
+        try:
+            user = bot.get_chat(chat_id)
+        except (BadRequest, Unauthorized):
+            text = f"{name}, "
+            continue
+        if user.username:
+            text = f"@{user.username}, "
+        else:
+            text = f"{user.first_name}, "
+
+        yield text
+
+def mass_send(msg: str, df_send: pd.DataFrame, parse_mode=None, entities=None) -> str:
+    #getting tokens
+    bot_tokens = get_tokens()
+    alliance_bot = Bot(token=bot_tokens['alliance_bot'])
+
+    #getting checking dev
+    if DEVELOPMENT:
+        bot_messenger = Bot(token=bot_tokens['dev_bot'])
+    else:
+        bot_messenger = Bot(token=bot_tokens['alliance_bot'])
+
+    for name, row in df_send.iterrows():
+        try:
+            bot_messenger.send_message(
+                    chat_id=row['telegram_id'],
+                    text=msg,
+                    parse_mode=parse_mode,
+                    entities=entities
+                    )
+        except (Unauthorized, BadRequest):
+            yield name
+        else:
+            yield ""
 
 def send_typing_action(func):
     """Sends typing action while processing func command."""
@@ -112,23 +156,37 @@ def start(update: Update, context: CallbackContext) -> None:
 def choosing_date(update: Update, context: CallbackContext) -> int:
     user = update.effective_user
     logger.info("User %s has started a process.", user.first_name)
-    reply_markup = print_date_buttons()
+
+    ##get sheet records and store
+    attendance, details, player_profiles = alliance.get_sheet_records()
+    context.user_data["attendance"] = attendance
+    context.user_data["details"] = details
+    context.user_data["player_profiles"] = player_profiles
+
+    reply_markup = print_date_buttons(attendance.columns)
     update.message.reply_text("Choose Training Date:", reply_markup=reply_markup)
     return 1
+
+
 
 def generate_attendance(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
     query.answer()
-    query.edit_message_text(
-            text="Parsing gsheets..."
-            )
-    date_query = datetime.strptime(query.data,"%d-%m-%Y")
-    attendance_df, player_profiles = alliance.get_2_dataframes()
-    query.edit_message_text(
-            text="Parsing gsheets...\nSorting attendance...\n"
-            )
+
+    #retrieving player profiles 
+    attendance_df = context.user_data["attendance"]
+    player_profiles = context.user_data["player_profiles"]
+
+    #retrieving date from date query 
+    date_query = datetime.strptime(query.data,"%d-%m-%Y %H:%M:%S")
+
+    #sorting attendance 
+    output_text = "Sorting attendance...\n"
+    query.edit_message_text(text=output_text)
     attendance_dict = alliance.get_participants(attendance_df, date_query, player_profiles)
     attending_male, attending_female = alliance.gender_sorter(attendance_dict["attending"], player_profiles)
+
+    #generating print out
     text = f"Attendance for {date_query.strftime('%d-%b-%y, %a')}\n\n"
     text += f"Attending boys: {len(attending_male)}\n"
     for name in attending_male:
@@ -136,27 +194,33 @@ def generate_attendance(update: Update, context: CallbackContext) -> None:
     text += f"\nAttending girls: {len(attending_female)}\n"
     for name in attending_female:
         text += name + "\n"
-    text += f"\nNumber of absentees: {len(attendance_dict['absent'])}\n"
-    text += f"Number not yet indicated: {len(attendance_dict['not indicated'])}\n"
-    alliance_token = get_tokens()["alliance_bot"]
-    alliance_bot = Bot(token=alliance_token)
-    for name in (attendance_dict["not indicated"]):
-        chat_id = player_profiles.loc[name]["telegram_id"]
-        try:
-            user = alliance_bot.get_chat(chat_id)
-        except (BadRequest, Unauthorized):
-            text += f"{name}, "
-            continue
-        if user.username:
-            text += f"@{user.username}, "
-        else:
-            text += f"{user.first_name}, "
+    text += f"\nAbsentees: {len(attendance_dict['absent'])}\n"
+    for name in attendance_dict["absent"]:
+        text += name + "\n"
+    text += f"\nNot yet indicated: {len(attendance_dict['not indicated'])}\n"
+
+    query.edit_message_text(
+            text=f"Sorting attendance...\nGetting usernames... 0/{len(attendance_dict['not indicated'])}\n"
+            )
+
+    username_generator = get_usernames(player_profiles, attendance_dict["not indicated"])
+    for i, name in enumerate(attendance_dict["not indicated"]):
+        username = next(username_generator)
+        text += username
+        query.edit_message_text(
+                text=f"Sorting attendance...\nGetting usernames... {i+1}/{len(attendance_dict['not indicated'])}"
+                )
+
     query.edit_message_text(
             text=text
             )
+
     logger.info("Attendance summary request completed successfuly by User %s", update.effective_user.first_name)
 
     return ConversationHandler.END
+
+
+
 
 def send_reminders(update: Update, context: CallbackContext) -> None:
     query = update.callback_query
@@ -164,51 +228,57 @@ def send_reminders(update: Update, context: CallbackContext) -> None:
     query.edit_message_text(
             text="Parsing gsheets..."
             )
-    date_query = datetime.strptime(query.data, "%d-%m-%Y")
-    attendance_df, player_profiles = alliance.get_2_dataframes()
-    attendance_dict = alliance.get_participants(attendance_df, date_query, player_profiles)
-    name_list_send = attendance_dict["not indicated"]
-    query.edit_message_text(
-            text="Parsing gsheets...\nCrafting reminder message...\n"
-            )
-    date_query = date_query.strftime('%d-%b-%y, %A')
-    remind_msg = alliance.read_msg_from_file(os.path.join('messages', 'not_indicated_message.txt'), date_query)
-    query.edit_message_text(
-            text="Parsing gsheets...\nCrafting reminder message...\nInitializing Alliance Bot...\n"
-            )
-    bot_tokens = get_tokens()
-    alliance_bot = Bot(token=bot_tokens["alliance_bot"])
-    if DEVELOPMENT:
-        bot_messenger = Bot(token=bot_tokens["dev_bot"])
-    else:
-        bot_messenger = alliance_bot
-    query.edit_message_text(
-            text=f"Process initialized.\nSending reminders 0/{len(name_list_send)}"
-            )
+    target_date = datetime.strptime(query.data, "%d-%m-%Y %H:%M:%S")
 
-    error_sends = list()
-    for i, name in enumerate(name_list_send):
-        chat_id= player_profiles.loc[name]["telegram_id"]
-        send_status = send_custom_msg(msg=remind_msg, chat_id=chat_id, bot_messenger=bot_messenger, parse_mode='HTML')
-        if not send_status:
-            error_sends.append(chat_id)
-        query.edit_message_text(
-                text=f"Process initialized.\nSending reminders {i+1}/{len(name_list_send)}"
-                )
-    error_send_string = ''
-    for chat_id in error_sends:
-        try:
-            user = alliance_bot.get_chat(chat_id=chat_id)
-        except (BadRequest, Unauthorized) :
-            error_send_string += player_profiles.index[player_profiles["telegram_id"] == chat_id][0] + ", "
-            continue
-        if user.username:
-            error_send_string += f"@{user.username}, "
-        else:
-            error_send_string += f"{user.first_name}, "
+    #getting sheet data
+    attendance, details, player_profiles = alliance.get_sheet_records()
+    attendance_dict = alliance.get_participants(attendance, target_date, player_profiles)
+
+    #getting not indicated df
+    name_list = attendance_dict["not indicated"]
+    not_indicated_df = player_profiles.loc[player_profiles.index.isin(name_list)]
+
+    #parsing message from file
     query.edit_message_text(
-            text=f"Reminders sent sucessfully for {date_query}.\n\n Unsucessful sends: {error_send_string}"
+            text="Parsing gsheets... done.\nCrafting reminder message...\n"
             )
+    date_query = target_date.strftime('%d-%b-%y, %A')
+    remind_msg = alliance.read_msg_from_file(os.path.join('messages', 'not_indicated_message.txt'), date_query)
+
+    query.edit_message_text(
+            text=f"Parsing gsheets... done.\nCrafting reminder message... done.\nSending messages... 0/{len(name_list)}\n"
+            )
+    send_message_generator = mass_send(
+            msg=remind_msg,
+            df_send=not_indicated_df,
+            parse_mode='HTML'
+            )
+    unsent_names = list()
+    for i, _ in enumerate(name_list):
+        unsent_name = next(send_message_generator)
+        if unsent_name != "":
+            unsent_names.append(unsent_name)
+        query.edit_message_text(
+                text=f"Parsing gsheets... done.\nCrafting reminder message... done.\nSending messages... {i + 1}/{len(name_list)}\n"
+                )
+
+    query.edit_message_text(
+            text=f"Sending messages... done.\nGetting unsent usernames 0/{len(unsent_names)}"
+            )
+    username_generator = get_usernames(
+            player_profiles, 
+            unsent_names)
+    unsucessful_sends= ''
+    for i, _ in enumerate(unsent_names):
+        unsucessful_sends += next(username_generator)
+        query.edit_message_text(
+        text=f"Sending messages... done.\nGetting unsent usernames {i+1}/{len(unsent_names)}"
+        )
+        
+    query.edit_message_text(
+            text=f"Reminders have been sent sucessfully for {date_query}\n\nUnsucessful sends: \n{unsucessful_sends}"
+            )    
+
     logger.info("reminders sent successfuly by User %s", update.effective_user.first_name)
     return ConversationHandler.END
 
@@ -226,6 +296,8 @@ def announce_all(update:Update, context: CallbackContext) -> int:
 @send_typing_action
 def confirm_message(update:Update, context: CallbackContext) -> int:
     reply_keyboard = [["Confirm", "Edit message"]]
+
+    #getting announcement message and entities, then storing 
     announcement = update.message.text
     announcement_entities = update.message.entities
     context.user_data['announcement'] = announcement
@@ -254,57 +326,48 @@ def send_message(update:Update, context:CallbackContext) -> None:
     user = update.effective_user
     msg = context.user_data['announcement'] + f"\n\n\n\n- @{update.effective_user.username}"
     msg_entities= context.user_data['announcement_entities']
-    admin_msg = update.message.reply_text(
-            "parsing gsheets..."
+
+    #get gsheets
+    admin_msg_text = "Parsing gsheets..."
+    admin_msg = update.message.reply_text(text=admin_msg_text)
+    _, _, player_profiles = alliance.get_sheet_records(attendance=False, details=False)
+
+    #filter active players
+    admin_msg_text += "done.\ngetting names..."
+    admin_msg.edit_text(admin_msg_text)
+    active_players = player_profiles[player_profiles['status'] == 'Active']
+
+    admin_msg_text +="done.\nSending announcements... 0/{active_players.shape[0]}"
+    send_message_generator = mass_send(
+            msg=msg,
+            df_send=active_players,
+            entities=msg_entities
             )
-    attendance_df, player_profiles = alliance.get_2_dataframes()
-    active_players = list()
-    admin_msg.edit_text(
-            "parsing gsheets...\n"
-            "getting names...\n"
-            )
-    for player in attendance_df.index:
-        if player_profiles.loc[player]["status"] == "Active":
-            active_players.append(player)
-    admin_msg.edit_text(
-            "parsing gsheets...\n"
-            "getting names...\n"
-            "initializing Alliance bot...\n"
-            )
-    bot_tokens = get_tokens()
-    alliance_bot = Bot(token=bot_tokens["alliance_bot"])
-    if DEVELOPMENT:
-        bot_messenger = Bot(token=bot_tokens["dev_bot"])
-    else:
-        bot_messenger = alliance_bot
-    admin_msg.edit_text(
-            "parsing gsheets...\n"
-            "getting names...\n"
-            "initializing Alliance bot...\n"
-            f"sending announcements... 0/{len(active_players)}"
-            )
-    unsends = ''
-    for i, player in enumerate(active_players):
-        chat_id = player_profiles.loc[player]["telegram_id"]
-        status = send_custom_msg(msg=msg, chat_id=chat_id,bot_messenger=bot_messenger, entities=msg_entities)
-        if not status:
-            try:
-                user = alliance_bot.get_chat(chat_id=chat_id)
-            except (Unauthorized, BadRequest):
-                unsends += f"{player}, "
-                continue
-            if user.username:
-                unsends += f'@{user.username}, '
-            else:
-                unsends += f'{user.first_name}'
+    unsent_names = list()
+    for i in range(active_players.shape[0]):
+        unsent_name = next(send_message_generator)
+        if unsent_name != "":
+            unsent_names.append(unsent_name)
+        admin_msg.edit_text(f"Sending announcements... {i+1}/{active_players.shape[0]}")
+
+    admin_msg.edit_text(f"Sending announcements... done.\nGetting unsent usernames... 0/{len(unsent_names)}")
+    username_generator = get_usernames(
+            player_profiles,
+            unsent_names)
+    unsucessful_sends= ''
+    for i, _ in enumerate(unsent_names):
+        unsucessful_sends += next(username_generator)
         admin_msg.edit_text(
-            "parsing gsheets...\n"
-            "getting names...\n"
-            "initializing Alliance bot...\n"
-            f"sending announcements... {i+1}/{len(active_players)}"
-                )
+        text=f"Sending announcements... done.\nGetting unsent usernames {i+1}/{len(unsent_names)}"
+        )
+
     admin_msg.edit_text(
-            "Sending announcements complete. list of uncompleted sends: \n\n" + unsends
+            "Sending announcements complete. list of uncompleted sends: \n\n" + unsucessful_sends,
+            )
+
+    update.message.reply_text(
+            "Process has been completed sucessfullly.",
+            reply_markup=ReplyKeyboardRemove()
             )
     logger.info("User %s sucessfully sent announcements", user.first_name)
 
@@ -313,14 +376,18 @@ def send_message(update:Update, context:CallbackContext) -> None:
 
 @restricted_admin
 @send_typing_action
-def choosing_date_text(update:Update, contex:CallbackContext) -> int:
+def choosing_date_text(update:Update, context:CallbackContext) -> int:
     user = update.effective_user
     logger.info("User %s has started a process: send training messages.", user.first_name)
-    df = alliance.get_attendance_df(100)
-    date_ls = alliance.active_date_list(df.columns, target_date=date.today() - timedelta(days=3))
+    #retrieve gsheets and store sheets
+    attendance, details, player_profiles = alliance.get_sheet_records()
+    context.user_data["attendance"] = attendance
+    #context.user_data["details"] = details
+    context.user_data["player_profiles"] = player_profiles
+    date_ls = alliance.active_date_list(attendance.columns, target_date=date.today() - timedelta(days=3))
     buttons = list()
     for date_option in date_ls:
-        date_str = date_option.date().strftime("%d-%m-%Y")
+        date_str = date_option.strftime("%d-%m-%Y %H:%M:%S")
         button = [date_str]
         buttons.append(button)
     reply_markup = ReplyKeyboardMarkup(
@@ -331,10 +398,10 @@ def choosing_date_text(update:Update, contex:CallbackContext) -> int:
 
 @send_typing_action
 def write_message(update:Update, context:CallbackContext) -> int:
-    target_date = datetime.strptime(update.message.text, '%d-%m-%Y')
+    target_date = datetime.strptime(update.message.text, '%d-%m-%Y %H:%M:%S')
     context.user_data['target_date'] = target_date
     update.message.reply_text(
-            f"You have choosen <u>{target_date.strftime('%d-%b, %a')}</u> as training date.\n\n"
+            f"You have choosen training on <u>{target_date.strftime('%d-%b, %a @ %-I:%M%p')}</u>.\n\n"
             "Write your message to players who are <u>attending</u> and <u>active players who have not indicated</u> attendance here. "
             "If you have choosen an earlier date, you can send <b>training summaries</b> to players who attended too!",
             parse_mode="HTML"
@@ -362,58 +429,56 @@ def confirm_training_message(update:Update, context: CallbackContext) -> int:
 
 @send_typing_action
 def send_training_message(update:Update, context: CallbackContext) -> int:
+    #getting relevant data
     target_date = context.user_data['target_date']
-    msg = f"{context.user_data['message']}\n\nMessage for training on {target_date.strftime('%d-%b, %a')}\n\n- @{update.effective_user.username}"
+    msg = f"{context.user_data['message']}\n\nMessage for training on {target_date.strftime('%d-%b, %a @ %-I:%M%p')}\n\n- @{update.effective_user.username}"
     msg_entities = context.user_data['message_entities']
-    admin_msg = update.message.reply_text(
-            "parsing gsheets..."
+    attendance = context.user_data['attendance']
+    player_profiles = context.user_data['player_profiles']
+
+    #sorting attendance and getting df
+    admin_msg=update.message.reply_text(
+            "Sorting attendance...\n"
             )
-    attendance_df, player_profiles = alliance.get_2_dataframes()
-    admin_msg.edit_text(
-            "parsing gsheets...\n"
-            "sorting attendance...\n"
-            )
-    attendance_dict = alliance.get_participants(attendance_df, target_date, player_profiles)
+    attendance_dict = alliance.get_participants(attendance, target_date, player_profiles)
     active_players = attendance_dict['attending'] + attendance_dict['not indicated']
+    active_players_df = player_profiles.loc[player_profiles.index.isin(active_players)]
+
     admin_msg.edit_text(
-            "parsing gsheets...\n"
-            "sorting attendance...\n"
-            "initializing Alliance bot...\n"
+            "Sorting attendance...\n done."
+            f"Sending training messages... 0/{len(active_players)}"
             )
-    bot_tokens = get_tokens()
-    alliance_bot = Bot(token=bot_tokens["alliance_bot"])
-    if DEVELOPMENT:
-        bot_messenger = Bot(token=bot_tokens["dev_bot"])
-    else:
-        bot_messenger = alliance_bot
-    admin_msg.edit_text(
-            "parsing gsheets...\n"
-            "sorting attendance...\n"
-            "initializing Alliance bot...\n"
-            f"sending training messages... 0/{len(active_players)}"
+    send_message_generator=mass_send(
+            msg=msg,
+            df_send=active_players_df,
+            entities=msg_entities
             )
-    unsends = ''
-    for i, player in enumerate(active_players):
-        chat_id = player_profiles.loc[player]["telegram_id"]
-        status = send_custom_msg(msg=msg, chat_id=chat_id,bot_messenger=bot_messenger, entities=msg_entities)
-        if not status:
-            try:
-                user = alliance_bot.get_chat(chat_id=chat_id)
-            except (Unauthorized, BadRequest):
-                unsends += f"{player}, "
-                continue
-            if user.username:
-                unsends += f'@{user.username}, '
-            else:
-                unsends += f'{user.first_name}'
+
+    unsent_names = list()
+    for i, _ in enumerate(active_players):
+        unsent_name = next(send_message_generator)
+        if unsent_name != "":
+            unsent_names.append(unsent_name)
+        admin_msg.edit_text(f"Sending training messages... {i+1}/{len(active_players)}")
+
+    admin_msg.edit_text(f"Sending training messages... done.\nGetting unsent usernames... 0/{len(unsent_names)}")
+    username_generator = get_usernames(
+            player_profiles,
+            unsent_names)
+    unsucessful_sends= ''
+    for i, _ in enumerate(unsent_names):
+        unsucessful_sends += next(username_generator)
         admin_msg.edit_text(
-            "parsing gsheets...\n"
-            "sorting attendance...\n"
-            "initializing Alliance bot...\n"
-            f"sending announcements... {i+1}/{len(active_players)}"
-                )
+        text=f"Sending training messages... done.\nGetting unsent usernames {i+1}/{len(unsent_names)}"
+        )
+
     admin_msg.edit_text(
-            f"sending training message for {target_date.strftime('%d-%b, %a')} complete.\n\n list of uncompleted sends: \n\n" + unsends
+            "Sending training messages complete. list of uncompleted sends: \n\n" + unsucessful_sends,
+            )
+
+    update.message.reply_text(
+            "Process has been completed sucessfullly.",
+            reply_markup=ReplyKeyboardRemove()
             )
     logger.info("User %s sucessfully sent training messages", update.effective_user.first_name)
     return ConversationHandler.END
@@ -449,7 +514,7 @@ def add_member(update:Update, context:CallbackContext) -> int:
     text = f"You have submitted '{add_id}' to be added to @alliance_training_bot\n"
     text += "Parsing gsheets...\n"
     message = update.message.reply_text(text)
-    attendance_df, player_profiles = alliance.get_2_dataframes()
+    attendance_df, _, player_profiles = alliance.get_sheet_records(details=False)
     if add_id not in player_profiles['telegram_id'].values:
         text += f"{add_id} not found in Player Profiles, nothing added."
         message.edit_text(text)
@@ -518,7 +583,7 @@ def add_admin(update: Update, context: CallbackContext) -> int:
     membership = get_membership()
     if add_admin_id in membership["admins"]:
         update.message.reply_text(f"{add_admin_id} is already an admin. nothing added")
-        logger.info("error occurred in adding admin %s, process cancelled", add_admin_id)
+        logger.info("%s is already an admin, nothing added, process cancelled", add_admin_id)
         return ConversationHandler.END
     membership["admins"].append(add_admin_id)
     update_membership(membership)
@@ -588,6 +653,7 @@ def show_members(update:Update, context: CallbackContext) -> None:
     members = get_membership()["members"]
     members_lst = list()
     output_msg = update.message.reply_text(f"getting members... 0/{len(members)}")
+    
     for i, member_id in enumerate(members):
         try:
             user = bot.get_chat(member_id)
@@ -645,7 +711,10 @@ def cancel(update:Update, context: CallbackContext) -> int:
 
 def main():
     bot_tokens = get_tokens()
-    admin_token = bot_tokens["admin_bot"]
+    if DEVELOPMENT:
+        admin_token = bot_tokens["admin_dev_bot"]
+    else:
+        admin_token = bot_tokens["admin_bot"]
 
     #setting command list
     commands = [
@@ -704,7 +773,7 @@ def main():
     conv_handler_announce_trng = ConversationHandler(
             entry_points=[CommandHandler('announce_training', choosing_date_text)],
             states={
-                1 : [MessageHandler(Filters.regex('^(0[1-9]|[12][0-9]|3[01])[- /.](0[1-9]|1[012])[- /.](19|20)\d\d$'), write_message)], 
+                1 : [MessageHandler(Filters.regex('^\d{1,2}-\d{1,2}-\d{4} \d{1,2}:\d{1,2}:\d{1,2}$'), write_message)], 
                 2 : [MessageHandler(Filters.text & ~Filters.command ,confirm_training_message)],
                 3 : [
                     MessageHandler(Filters.regex('^(Confirm)$'), send_training_message),
