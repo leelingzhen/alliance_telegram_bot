@@ -4,7 +4,7 @@ services:
         build:
             context: .
             dockerfile: Dockerfile_admin_bot
-        image: alliance_admin_bot
+        image: leelingzhen/telegram-admin-attendance-bot
         container_name: alliance_admin_bot
         volumes:
             - .secrets:/alliance_bot/.secrets
@@ -12,7 +12,7 @@ services:
         build:
             context: .
             dockerfile: Dockerfile_training_bot
-        image: alliance_training_bot
+        image: leelingzhen/telegram-attendance-bot
         container_name: alliance_training_bot
         volumes:
             - .secrets:/alliance_bot/.secrets

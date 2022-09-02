@@ -30,7 +30,7 @@ def clean_details_df(df, excess_rows=100):
 def get_sheet_records(
         workbook_name="Alliance Training Attendance",
         player_profiles="Player Profiles",
-        attendance="Alliance Attendance (Beta)",
+        attendance="Alliance Attendance",
         details="Training Details (Beta)"):
     service_acc = gspread.service_account(filename=os.path.join(".secrets", "credentials.json"))
     workbook = service_acc.open(workbook_name)
@@ -64,7 +64,7 @@ def get_sheet_records(
 def update_cell(
         cell_location : tuple,
         indicated_attendance : str,
-        sheetname="Alliance Attendance (Beta)",
+        sheetname="Alliance Attendance",
         workbook_name="Alliance Training Attendance"):
 
     row, column = cell_location[0], cell_location[1]
