@@ -2,8 +2,10 @@
 
 ## Setup
 using Docker is recommended. 
-install [Docker] (https://docs.docker.com/engine/install/ubuntu/)
-install [Docker-compose] (https://docs.docker.com/compose/install/)
+
+install [Docker](https://docs.docker.com/engine/install/ubuntu/)
+
+install [Docker-compose](https://docs.docker.com/compose/install/)
 
 in docker-compose.yml, use the following to run the containers
 ```
