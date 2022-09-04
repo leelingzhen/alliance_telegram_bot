@@ -87,7 +87,7 @@ def get_training_dates(attendance_df, player_profiles, user_id) -> list:
     df = attendance_df.loc[name].where(attendance_df.loc[name] == "Yes")
     df = df.dropna()
     date_arr = df.index.where(df.index.date >= date.today()).dropna()
-    return date_arr
+    return list(date_arr)
 
 def get_participants(df, date_query, player_profiles):
     attendance_dict = {}

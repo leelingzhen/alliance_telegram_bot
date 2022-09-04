@@ -164,6 +164,10 @@ def choosing_date(update: Update, context: CallbackContext) -> int:
     context.user_data["player_profiles"] = player_profiles
 
     reply_markup = print_date_buttons(attendance.columns)
+    if reply_markup["inline_keyboard"] == []:
+        update.message.reply_text("There seems to be no further events planned, please add a new date column to the google sheets!")
+        logger.info("process ended as there were no training dates")
+        return ConversationHandler.END
     update.message.reply_text("Choose Training Date:", reply_markup=reply_markup)
     return 1
 
@@ -385,6 +389,10 @@ def choosing_date_text(update:Update, context:CallbackContext) -> int:
     #context.user_data["details"] = details
     context.user_data["player_profiles"] = player_profiles
     date_ls = alliance.active_date_list(attendance.columns, target_date=date.today() - timedelta(days=3))
+    if list(date_ls) == []:
+        update.message.reply_text("There seems to be no more event dates in range, Please add a new column to the google sheets!")
+        logger.info("Process terminated as there are no more event dates")
+        return ConversationHandler.END
     buttons = list()
     for date_option in date_ls:
         date_str = date_option.strftime("%d-%m-%Y %H:%M:%S")

@@ -99,8 +99,13 @@ def choosing_date(update: Update, context: CallbackContext) -> str:
     context.user_data["player_profiles"] = player_profiles
 
     reply_markup = print_date_buttons(attendance.columns)
-    update.message.reply_text("Choose Training Date:", reply_markup=reply_markup)
-    return "indicate_attendance"
+    #case where there are no more future dates
+    if reply_markup['inline_keyboard'] == []:
+        update.message.reply_text("There are no more further planned trainings. Enjoy your break!🏝🏝")
+        return ConversationHandler.END 
+    else:
+        update.message.reply_text("Choose Training Date:", reply_markup=reply_markup)
+        return "indicate_attendance"
 
 
 def indicate_attendance(update: Update, context: CallbackContext) -> str:
@@ -173,11 +178,16 @@ def training_dates(update:Update, context: CallbackContext) -> None:
     attendance_df, details, player_profiles = alliance.get_sheet_records()
     user_id = update.effective_user.id
     date_arr = alliance.get_training_dates(attendance_df, player_profiles, user_id)
+    if date_arr == []:
+        update.message.reply_text(f'There are no future trainings planned Enjoy your break.😴😴')
+        logger.info("User %s has queried for his/her training schedule...", update.effective_user.first_name)
+        return None
     date_s = ""
     for date in date_arr:
         date_s += date.strftime("%d %b, %a @ %-I:%M%p") + '\n'
     update.message.reply_text(f'you have registered for training on dates: \n\n{date_s}\n\nSee you then!🦿🦿')
     logger.info("User %s has queried for his/her training schedule...", update.effective_user.first_name)
+    return None
 
 
 @send_typing_action
