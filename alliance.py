@@ -4,6 +4,13 @@ import pandas as pd
 import numpy as np
 from datetime import date, datetime
 import os
+from dotenv import load_dotenv
+
+#getting environmental variables
+def environment_var(key='DEV') -> int:
+    load_dotenv()
+    env_var = os.environ.get(key)
+    return int(env_var)
 
 
 #new code implementations

@@ -27,7 +27,7 @@ from telegram.ext import (
         )
 from telegram.error import Unauthorized, BadRequest
 
-DEVELOPMENT = True
+DEVELOPMENT = alliance.environment_var()
 
 # Enable logging
 logging.basicConfig(

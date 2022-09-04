@@ -24,7 +24,7 @@ from telegram.ext import (
         CallbackQueryHandler,
         )
 
-DEVELOPMENT = True
+DEVELOPMENT = alliance.environment_var()
 
 # Enable logging
 logging.basicConfig(
