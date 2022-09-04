@@ -11,7 +11,7 @@ services:
     alliance_training_bot:
         build:
             context: .
-            dockerfile: bot_trainin.Dockerfile
+            dockerfile: bot_training.Dockerfile
         image: leelingzhen/telegram-attendance-bot
         container_name: alliance_training_bot
         volumes:
