@@ -1,0 +1,18 @@
+version: "3.7"
+services:
+    alliance_admin_bot:
+        build:
+            context: .
+            dockerfile: admin_bot.Dockerfile
+        image: leelingzhen/telegram-admin-attendance-bot
+        container_name: alliance_admin_bot
+        volumes:
+            - .secrets:/alliance_bot/.secrets
+    alliance_training_bot:
+        build:
+            context: .
+            dockerfile: training_bot.Dockerfile
+        image: leelingzhen/telegram-attendance-bot
+        container_name: alliance_training_bot
+        volumes:
+            - .secrets:/alliance_bot/.secrets

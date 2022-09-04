@@ -37,7 +37,7 @@ def clean_details_df(df, excess_rows=100):
 def get_sheet_records(
         workbook_name="Alliance Training Attendance",
         player_profiles="Player Profiles",
-        attendance="Alliance Attendance (Beta)",
+        attendance="Alliance Attendance",
         details="Training Details (Beta)"):
     service_acc = gspread.service_account(filename=os.path.join(".secrets", "credentials.json"))
     workbook = service_acc.open(workbook_name)
@@ -71,7 +71,7 @@ def get_sheet_records(
 def update_cell(
         cell_location : tuple,
         indicated_attendance : str,
-        sheetname="Alliance Attendance (Beta)",
+        sheetname="Alliance Attendance",
         workbook_name="Alliance Training Attendance"):
 
     row, column = cell_location[0], cell_location[1]
@@ -80,31 +80,7 @@ def update_cell(
     ws = workbook.worksheet(sheetname)
     ws.update_cell(row, column, indicated_attendance)
 
-#old code implementations
-def get_dataframe(sheetname):
-    service_acc = gspread.service_account(filename=os.path.join(".secrets", "credentials.json"))
-    workbook = service_acc.open("Alliance Training Attendance")
-    ws = workbook.worksheet(sheetname)
-    df = pd.DataFrame(ws.get_all_records())
-    return df
 
-def get_2_dataframes(sheetname1="Alliance Attendance 2022", sheetname2="Player Profiles", excess_rows=100):
-    service_acc = gspread.service_account(filename=os.path.join(".secrets", "credentials.json"))
-    workbook = service_acc.open("Alliance Training Attendance")
-    ws_1 = workbook.worksheet(sheetname1)
-    ws_2 = workbook.worksheet(sheetname2)
-    df_1 = pd.DataFrame(ws_1.get_all_records())
-    df_2 = pd.DataFrame(ws_2.get_all_records())
-    df_1.columns = pd.to_datetime(df_1.columns)
-    df_1 = df_1[:excess_rows]
-    df_1 = df_1.set_index(df_1.iloc[:,0])
-    df_1= df_1.iloc[:,1:]
-    df_1= df_1.replace("",np.nan)
-    df_1 = df_1.dropna(how='all')
-    df_1 = df_1.drop(axis=0, index="Total")
-    df_2 = df_2.set_index("names")
-
-    return df_1, df_2
 
 def get_training_dates(attendance_df, player_profiles, user_id) -> list:
     name = player_profiles.index[player_profiles["telegram_id"] == int(user_id)][0]
@@ -113,32 +89,15 @@ def get_training_dates(attendance_df, player_profiles, user_id) -> list:
     date_arr = df.index.where(df.index.date >= date.today()).dropna()
     return date_arr
 
-
-def get_attendance_df(excess_rows):
-    attendance_df = get_dataframe("Alliance Attendance 2022")
-    attendance_df.columns = pd.to_datetime(attendance_df.columns)
-    attendance_df = attendance_df[:excess_rows]
-    attendance_df = attendance_df.set_index(attendance_df.iloc[:,0])
-    attendance_df = attendance_df.iloc[:,1:]
-    attendance_df = attendance_df.replace("",np.nan)
-    attendance_df = attendance_df.dropna(how='all')
-    attendance_df = attendance_df.drop(axis=0, index="Total")
-    return attendance_df
-
-def get_player_profiles(excess_rows):
-    df = get_dataframe("Player Profiles")
-    df = df.set_index("names")
-    return df
-
-def get_participants(df, target_date, player_profiles):
+def get_participants(df, date_query, player_profiles):
     attendance_dict = {}
-    date_str = target_date.strftime("%Y-%m-%d")
+    target_date = pd.Timestamp(date_query)
     inactive_players = player_profiles.index[player_profiles["status"] == "Inactive"]
-    if date_str not in df.columns:
+    if target_date not in df.columns:
         return attendance_dict
-    attendance_dict["attending"] = list(df.index[df[date_str]== "Yes"])
-    attendance_dict["absent"] = list(df.index[df[date_str] == "No"])
-    attendance_dict["not indicated"] = list(df.index[df[date_str].isna()])
+    attendance_dict["attending"] = list(df.index[df[target_date]== "Yes"])
+    attendance_dict["absent"] = list(df.index[df[target_date] == "No"])
+    attendance_dict["not indicated"] = list(df.index[df[target_date].isna()])
     #removing inactive players from "not indicated list"
     for player in inactive_players:
         if player in attendance_dict["not indicated"]:
