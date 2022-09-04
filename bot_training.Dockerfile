@@ -11,6 +11,7 @@ RUN pip3 install --upgrade pip
 RUN pip3 install -r requirements.txt
 
 COPY ./messages ./messages 
-COPY ./telegram_alliance_bot.py ./telegram_alliance_bot.py
+COPY ./telegram_training_bot.py ./telegram_training_bot.py
 COPY ./alliance.py ./alliance.py 
-CMD ["python", "./telegram_alliance_bot.py"]
+COPY ./.env ./.env
+CMD ["python", "./telegram_training_bot.py"]
