@@ -14,17 +14,16 @@ def environment_var(key='DEV') -> int:
 
 
 #new code implementations
-def clean_attendance_df(df, excess_rows=100):
+def clean_attendance_df(df):
     df.columns = pd.to_datetime(df.columns, errors='coerce', format='%a, %d-%m-%y @ %H:%M')
-    df = df[:excess_rows]
     df = df.set_index(df.iloc[:,0])
+    df = df.loc[:"Total"]
     df = df.iloc[:,1:]
     df = df.replace("",np.nan)
-    df = df.dropna(how='all')
     df = df.drop(axis=0, index="Total")
     return df
 
-def clean_player_profiles(df, excess_rows=100):
+def clean_player_profiles(df):
     df = df.set_index("names")
     return df
 
