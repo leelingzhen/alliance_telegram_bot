@@ -83,7 +83,7 @@ def update_cell(
 
 def get_training_dates(attendance_df, player_profiles, user_id) -> list:
     name = player_profiles.index[player_profiles["telegram_id"] == int(user_id)][0]
-    df = attendance_df.loc[name].where(attendance_df.loc[name] == "Yes")
+    df = attendance_df.loc[name].where(attendance_df.loc[name].str[0] == "Y")
     df = df.dropna()
     date_arr = df.index.where(df.index.date >= date.today()).dropna()
     return list(date_arr)
@@ -94,8 +94,11 @@ def get_participants(df, date_query, player_profiles):
     inactive_players = player_profiles.index[player_profiles["status"] == "Inactive"]
     if target_date not in df.columns:
         return attendance_dict
-    attendance_dict["attending"] = list(df.index[df[target_date]== "Yes"])
-    attendance_dict["absent"] = list(df.index[df[target_date] == "No"])
+    attendance_dict["attending"] = list(df.index[df[target_date].str[0]== "Y"])
+
+    absent_df = df[target_date].where(df[target_date].str[0] == "N").dropna()
+    attendance_dict["absent"] = extract_reason(absent_df)
+
     attendance_dict["not indicated"] = list(df.index[df[target_date].isna()])
     #removing inactive players from "not indicated list"
     for player in inactive_players:
@@ -104,6 +107,20 @@ def get_participants(df, date_query, player_profiles):
         if player in attendance_dict["absent"]:
             attendance_dict["absent"].remove(player)
     return attendance_dict
+
+def extract_reason(df: pd.DataFrame) -> list:
+    try:
+        #finding minimum value where "(" starts
+        min_val = min(x for x in df.str.find('(') if x > -1)
+    except ValueError:
+        # when there are no reasons in that specific date
+        return df.index
+    else:
+        reasons = df.str[min_val:]
+        output = df.index + " " + reasons
+        return output
+
+
 
 def gender_sorter(name_list, player_profiles):
     male_list = list()
@@ -119,10 +136,19 @@ def user_attendance_status(user_id: str,date_query, attendance_df, player_profil
     target_date = pd.Timestamp(date_query)
     name = player_profiles.index[player_profiles["telegram_id"] == int(user_id)]
     status = attendance_df[target_date][name][0]
-    if status == "Yes" or status == "No":
+
+    #only way to determine if status is a 'nan' or a string value, isnan doesnt seem to work
+    if type(status) == float:
+        return "Not indicated"
+    else:
+        return status
+    """
+    if status[0] == "Y" or status[0] == "N":
         return status
     else:
-        return "Not indicated"
+        return "Not indicated" 
+    """
+
 
 def cell_location(user_id, date_query, attendance_df, player_profiles):
     name = player_profiles.index[player_profiles["telegram_id"] == int(user_id)][0]

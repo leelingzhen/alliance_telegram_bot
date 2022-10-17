@@ -121,12 +121,16 @@ def indicate_attendance(update: Update, context: CallbackContext) -> str:
     attendance_df = context.user_data["attendance"]
     player_profiles = context.user_data["player_profiles"]
 
+    #initialise indicated_attendance
+    context.user_data["indication"] = ""
+
     #get cell location of attendance and store
     row, column = alliance.cell_location(user_id, date_query, attendance_df, player_profiles)
     context.user_data["cell_location"] = (row, column)
 
     button = [
             [InlineKeyboardButton("Yes I ❤️ frisbee", callback_data="Yes")],
+            #[InlineKeyboardButton("Yes but...", callback_data="Yes with reason")],
             [InlineKeyboardButton("No (lame)", callback_data="No")],
             ]
     reply_markup = InlineKeyboardMarkup(button)
@@ -138,35 +142,69 @@ def indicate_attendance(update: Update, context: CallbackContext) -> str:
             )
     return "update_attendance"
 
-def update_attendance(update: Update, context: CallbackContext) -> str:
+def give_reason(update: Update, context: CallbackContext) -> str:
     query = update.callback_query
     query.answer()
-    query.edit_message_text(
-            text="updating your attendance on gsheets..."
-            )
-    #get indicated attendance
-    indicated_attendance = query.data
+    context.user_data["indication"] = query.data
 
+    query.edit_message_text(
+            text="Please write a comment/reason 😏"
+            )
+    return "update_attendance"
+
+    
+
+def update_attendance(update: Update, context: CallbackContext) -> str:
+
+    #retrieve indication of attendance
+    indication = context.user_data["indication"]
+    
+    if indication == "":
+        #indicated attendance is yes
+        query = update.callback_query
+        query.answer()
+        indication = query.data
+        reason = ""
+        bot_message = query.edit_message_text(
+                text = "updating your attendance on gsheets...."
+                )
+                
+
+
+    elif indication == "No":
+        #retrieve reasons
+        reason = update.message.text
+        bot_message = update.message.reply_text(
+                text="updating your attendance on gsheets..."
+                )
+            
     #get stored data
     cell_location = context.user_data["cell_location"]
     target_date = context.user_data["target_date"]
     
     training_date = target_date.strftime("%-d %b, %a")
     training_time = target_date.strftime("%-I:%M%p")
-    if indicated_attendance == "Yes":
-        comment = "See you at training! 🦾🦾"
-    elif indicated_attendance == "No":
-        comment = "Hope to see you soon🥲🥲"
+    if indication == "Yes":
+        bot_comment = "See you at training! 🦾🦾"
+    elif indication == "No":
+        bot_comment = "Hope to see you soon🥲🥲"
 
-    alliance.update_cell(cell_location, indicated_attendance)
+    cell_text = indication
+    if reason != "":
+        cell_text += f" ({reason})"
+
+    alliance.update_cell(cell_location, cell_text)
     text = f"""
     You have sucessfully updated your attendance! 🤖🤖\n
     Date: {training_date}\n
     Time: {training_time}\n
-    Attendance: {indicated_attendance}\n\n""" 
+    Attendance: {indication}\n\n""" 
 
-    query.edit_message_text(
-            text=text + comment
+    if indication == "No":
+        text += f"    Comments: {reason}\n\n" 
+
+    bot_message.edit_text(
+            text=text + bot_comment
             )
     logger.info("User %s has filled up his/her attendance...", update.effective_user.first_name)
     return ConversationHandler.END
@@ -240,7 +278,9 @@ def main():
                     CallbackQueryHandler(indicate_attendance)
                     ],
                 "update_attendance" : [
-                    CallbackQueryHandler(update_attendance)
+                    CallbackQueryHandler(give_reason, pattern='^' + "No" + '$' ),
+                    CallbackQueryHandler(update_attendance, pattern='^' + "Yes" + '$'),
+                    MessageHandler(Filters.text & ~Filters.command ,update_attendance)
                     ],
                 },
             fallbacks=[CommandHandler('cancel',cancel)],
