@@ -15,7 +15,9 @@ from telegram import (
         ReplyKeyboardRemove,
         InlineKeyboardMarkup,
         ChatAction,
-        CallbackQuery #for type checking
+        CallbackQuery, #for type checking
+        MessageEntity
+
         )
 from telegram.bot import Bot, BotCommand
 from telegram.ext import (
@@ -202,7 +204,10 @@ def generate_attendance(update: Update, context: CallbackContext) -> None:
     for name in attendance_dict["absent"]:
         text += name + "\n"
     text += f"\nNot yet indicated: {len(attendance_dict['not indicated'])}\n"
-
+    for name in attendance_dict["not indicated"]:
+        text += name + "\n"
+        
+    '''
     query.edit_message_text(
             text=f"Sorting attendance...\nGetting usernames... 0/{len(attendance_dict['not indicated'])}\n"
             )
@@ -214,6 +219,7 @@ def generate_attendance(update: Update, context: CallbackContext) -> None:
         query.edit_message_text(
                 text=f"Sorting attendance...\nGetting usernames... {i+1}/{len(attendance_dict['not indicated'])}"
                 )
+    '''
 
     query.edit_message_text(
             text=text
@@ -290,50 +296,68 @@ def send_reminders(update: Update, context: CallbackContext) -> None:
 @send_typing_action
 def announce_all(update:Update, context: CallbackContext) -> int:
     logger.info("User %s initiated process: announce all", update.effective_user.first_name)
+    #conversation state
+    conv_state = 0
+    context.user_data['conv_state'] = conv_state
+
     update.message.reply_text(
             'You will be sending an annoucement to all active players in alliance through @alliance_training_bot. '
             'Send /cancel to cancel the process\n\n'
             'Please send me your message here!'
             )
-    return 1
+
+    context.user_data['conv_state'] += 1
+    return context.user_data['conv_state']
 
 @send_typing_action
 def confirm_message(update:Update, context: CallbackContext) -> int:
-    reply_keyboard = [["Confirm", "Edit message"]]
+    buttons = [
+            [InlineKeyboardButton(text="Confirm", callback_data="forward")],
+            [InlineKeyboardButton(text="Edit Message", callback_data="back")]
+            ]
 
     #getting announcement message and entities, then storing 
     announcement = update.message.text
     announcement_entities = update.message.entities
     context.user_data['announcement'] = announcement
     context.user_data['announcement_entities'] = announcement_entities
-    update.message.reply_text(
+    bot_message = update.message.reply_text(
             'You have sent me: \n\n',
-            reply_markup=ReplyKeyboardMarkup(
-                reply_keyboard, one_time_keyboard=True, input_field_placeholder="Confirm or edit message?"
-                ),
             )
     update.message.reply_text(
             text=announcement ,
             entities=announcement_entities
             )
-    return 2
+    update.message.reply_text(
+            text="Confirm message?",
+            reply_markup=InlineKeyboardMarkup(buttons)
+            )
+
+    context.user_data['conv_state'] += 1
+    return context.user_data['conv_state']
 
 @send_typing_action
 def edit_msg(update:Update, context:CallbackContext) -> int:
-    update.message.reply_text(
+    query = update.callback_query
+    query.answer()
+    query.edit_message_text(
             'Please send me your message here again!'
             )
-    return 1
+
+    context.user_data['conv_state'] -= 1
+    return context.user_data['conv_state']
 
 @send_typing_action
 def send_message(update:Update, context:CallbackContext) -> None:
+    query = update.callback_query
+    query.answer()
     user = update.effective_user
     msg = context.user_data['announcement'] + f"\n\n\n\n- @{update.effective_user.username}"
     msg_entities= context.user_data['announcement_entities']
 
     #get gsheets
     admin_msg_text = "Parsing gsheets..."
-    admin_msg = update.message.reply_text(text=admin_msg_text)
+    admin_msg = query.edit_message_text(text=admin_msg_text)
     _, _, player_profiles = alliance.get_sheet_records(attendance=False, details=False)
 
     #filter active players
@@ -369,83 +393,49 @@ def send_message(update:Update, context:CallbackContext) -> None:
             "Sending announcements complete. list of uncompleted sends: \n\n" + unsucessful_sends,
             )
 
-    update.message.reply_text(
-            "Process has been completed sucessfullly.",
-            reply_markup=ReplyKeyboardRemove()
-            )
     logger.info("User %s sucessfully sent announcements", user.first_name)
-
-
     return ConversationHandler.END
 
-@restricted_admin
-@send_typing_action
-def choosing_date_text(update:Update, context:CallbackContext) -> int:
-    user = update.effective_user
-    logger.info("User %s has started a process: send training messages.", user.first_name)
-    #retrieve gsheets and store sheets
-    attendance, details, player_profiles = alliance.get_sheet_records()
-    context.user_data["attendance"] = attendance
-    #context.user_data["details"] = details
-    context.user_data["player_profiles"] = player_profiles
-    date_ls = alliance.active_date_list(attendance.columns, target_date=date.today() - timedelta(days=3))
-    if list(date_ls) == []:
-        update.message.reply_text("There seems to be no more event dates in range, Please add a new column to the google sheets!")
-        logger.info("Process terminated as there are no more event dates")
-        return ConversationHandler.END
-    buttons = list()
-    for date_option in date_ls:
-        date_str = date_option.strftime("%d-%m-%Y %H:%M:%S")
-        button = [date_str]
-        buttons.append(button)
-    reply_markup = ReplyKeyboardMarkup(
-                buttons, one_time_keyboard=True, input_field_placeholder="choose date"
-                )
-    update.message.reply_text("Choose Training Date:", reply_markup=reply_markup)
-    return 1
 
 @send_typing_action
 def write_message(update:Update, context:CallbackContext) -> int:
-    target_date = datetime.strptime(update.message.text, '%d-%m-%Y %H:%M:%S')
+    query = update.callback_query
+    query.answer()
+    target_date = datetime.strptime(query.data, '%d-%m-%Y %H:%M:%S')
     context.user_data['target_date'] = target_date
-    update.message.reply_text(
+    query.edit_message_text(
             f"You have choosen training on <u>{target_date.strftime('%d-%b, %a @ %-I:%M%p')}</u>.\n\n"
             "Write your message to players who are <u>attending</u> and <u>active players who have not indicated</u> attendance here. "
             "If you have choosen an earlier date, you can send <b>training summaries</b> to players who attended too!",
             parse_mode="HTML"
             )
-    return 2
+    context.user_data['conv_state'] = 2
+    return context.user_data['conv_state']
 
-@send_typing_action
-def confirm_training_message(update:Update, context: CallbackContext) -> int:
-    reply_keyboard = [['Confirm', 'Edit message']]
-    message = update.message.text
-    message_entities = update.message.entities
-    context.user_data['message'] = message
-    context.user_data['message_entities'] = message_entities
-    update.message.reply_text(
-            "You have sent me:",
-            reply_markup=ReplyKeyboardMarkup(
-                reply_keyboard, one_time_keyboard=True, input_field_placeholder="confirm message"
-                )
-            )
-    update.message.reply_text(
-            text=message,
-            entities=message_entities
-            )
-    return 3
 
 @send_typing_action
 def send_training_message(update:Update, context: CallbackContext) -> int:
+    query = update.callback_query
+    query.answer()
     #getting relevant data
     target_date = context.user_data['target_date']
-    msg = f"{context.user_data['message']}\n\nMessage for training on {target_date.strftime('%d-%b, %a @ %-I:%M%p')}\n\n- @{update.effective_user.username}"
-    msg_entities = context.user_data['message_entities']
+    comment = f"Message for training on {target_date.strftime('%d-%b, %a @ %-I:%M%p')}"
+    msg = f"{context.user_data['announcement']}\n\n{comment}\n\n- @{update.effective_user.username}"
+    msg_entities = context.user_data['announcement_entities']
+
+    msg_entities.append(
+            MessageEntity(
+                type="italic",
+                offset=len(context.user_data['announcement']) + 2,
+                length=len(comment)
+                )
+            )
+
     attendance = context.user_data['attendance']
     player_profiles = context.user_data['player_profiles']
 
     #sorting attendance and getting df
-    admin_msg=update.message.reply_text(
+    admin_msg=query.edit_message_text(
             "Sorting attendance...\n"
             )
     attendance_dict = alliance.get_participants(attendance, target_date, player_profiles)
@@ -484,19 +474,8 @@ def send_training_message(update:Update, context: CallbackContext) -> int:
             "Sending training messages complete. list of uncompleted sends: \n\n" + unsucessful_sends,
             )
 
-    update.message.reply_text(
-            "Process has been completed sucessfullly.",
-            reply_markup=ReplyKeyboardRemove()
-            )
     logger.info("User %s sucessfully sent training messages", update.effective_user.first_name)
     return ConversationHandler.END
-
-@send_typing_action
-def edit_training_msg(update:Update, context: CallbackContext) -> int:
-    update.message.reply_text(
-            "Send your message to me again: "
-            )
-    return 2
 
 @send_typing_action
 @restricted_admin
@@ -772,20 +751,22 @@ def main():
             states={
                 1 : [MessageHandler(Filters.text & ~Filters.command ,confirm_message)],
                 2 : [
-                    MessageHandler(Filters.regex('^(Confirm)$'), send_message),
-                    MessageHandler(Filters.regex('^(Edit message)$'), edit_msg),
+                    CallbackQueryHandler(send_message, pattern=f'^forward$'),
+                    CallbackQueryHandler(edit_msg, pattern=f'^back$')
                     ],
                 },
             fallbacks=[CommandHandler('cancel', cancel)]
             )
     conv_handler_announce_trng = ConversationHandler(
-            entry_points=[CommandHandler('announce_training', choosing_date_text)],
+            entry_points=[CommandHandler('announce_training', choosing_date)],
             states={
-                1 : [MessageHandler(Filters.regex('^\d{1,2}-\d{1,2}-\d{4} \d{1,2}:\d{1,2}:\d{1,2}$'), write_message)], 
-                2 : [MessageHandler(Filters.text & ~Filters.command ,confirm_training_message)],
+                1 : [
+                    CallbackQueryHandler(write_message),
+                    ], 
+                2 : [MessageHandler(Filters.text & ~Filters.command ,confirm_message)],
                 3 : [
-                    MessageHandler(Filters.regex('^(Confirm)$'), send_training_message),
-                    MessageHandler(Filters.regex('^(Edit message)$'), edit_training_msg),
+                    CallbackQueryHandler(send_training_message, pattern=f'^forward$'),
+                    CallbackQueryHandler(edit_msg, pattern=f'^back$')
                     ],
 
                 },

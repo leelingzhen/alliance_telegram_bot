@@ -97,7 +97,7 @@ def get_participants(df, date_query, player_profiles):
     attendance_dict["attending"] = list(df.index[df[target_date].str[0]== "Y"])
 
     absent_df = df[target_date].where(df[target_date].str[0] == "N").dropna()
-    attendance_dict["absent"] = extract_reason(absent_df)
+    attendance_dict["absent"] = list(extract_reason(absent_df))
 
     attendance_dict["not indicated"] = list(df.index[df[target_date].isna()])
     #removing inactive players from "not indicated list"
