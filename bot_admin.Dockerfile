@@ -12,6 +12,7 @@ RUN pip3 install -r requirements.txt
 
 COPY ./messages ./messages 
 COPY ./admin_telegram_bot.py ./admin_telegram_bot.py
+COPY ./telegram_training_bot.py ./telegram_training_bot.py
 COPY ./alliance.py ./alliance.py 
 COPY ./.env ./.env
 CMD ["python", "./admin_telegram_bot.py"]

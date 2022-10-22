@@ -6,6 +6,10 @@ import json
 
 from datetime import date, datetime, timedelta
 from functools import wraps
+from telegram_training_bot import (
+        print_date_buttons,
+        page_change
+        )
 
 from telegram import (
         Update,
@@ -63,17 +67,6 @@ def send_custom_msg(msg: str, chat_id: str, bot_messenger: Bot, parse_mode=None,
     except BadRequest:
         return False
     return True
-
-def print_date_buttons(date_list):
-    buttons = list()
-    date_list = alliance.active_date_list(date_list, target_date=date.today())
-    for date_option in date_list:
-        date_str = date_option.date().strftime("%d-%b-%y, %A")
-        callback_data = date_option.strftime("%d-%m-%Y %H:%M:%S")
-        button = InlineKeyboardButton(text=date_str, callback_data=callback_data)
-        buttons.append([button])
-    reply_markup = InlineKeyboardMarkup(buttons)
-    return reply_markup
 
 def get_usernames(player_profiles: pd.DataFrame, name_list: list, token_key="alliance_bot") -> str:
     bot_token = get_tokens()[token_key]
@@ -164,15 +157,15 @@ def choosing_date(update: Update, context: CallbackContext) -> int:
     context.user_data["attendance"] = attendance
     context.user_data["details"] = details
     context.user_data["player_profiles"] = player_profiles
+    context.user_data["page"] = 0
 
-    reply_markup = print_date_buttons(attendance.columns)
+    reply_markup = print_date_buttons(attendance.columns, 0)
     if reply_markup["inline_keyboard"] == []:
         update.message.reply_text("There seems to be no further events planned, please add a new date column to the google sheets!")
         logger.info("process ended as there were no training dates")
         return ConversationHandler.END
     update.message.reply_text("Choose Training Date:", reply_markup=reply_markup)
     return 1
-
 
 
 def generate_attendance(update: Update, context: CallbackContext) -> None:
@@ -730,7 +723,8 @@ def main():
             entry_points=[CommandHandler("attendance_list", choosing_date)],
             states={
                 1 : [
-                    CallbackQueryHandler(generate_attendance)
+                    CallbackQueryHandler(page_change, pattern='^-?[0-9]{0,10}$' ),
+                    CallbackQueryHandler(generate_attendance,pattern='^([1-9]|([012][0-9])|(3[01]))-([0]{0,1}[1-9]|1[012])-\d\d\d\d (20|21|22|23|[0-1]?\d):[0-5]?\d:[0-5]?\d$')
                     ],
 
                 },
@@ -741,7 +735,8 @@ def main():
             entry_points=[CommandHandler("remind", choosing_date)],
             states={
                 1 : [
-                    CallbackQueryHandler(send_reminders)
+                    CallbackQueryHandler(page_change, pattern='^-?[0-9]{0,10}$' ),
+                    CallbackQueryHandler(send_reminders, pattern='^([1-9]|([012][0-9])|(3[01]))-([0]{0,1}[1-9]|1[012])-\d\d\d\d (20|21|22|23|[0-1]?\d):[0-5]?\d:[0-5]?\d$')
                     ],
                 },
             fallbacks=[CommandHandler('cancel', cancel)],
@@ -761,7 +756,8 @@ def main():
             entry_points=[CommandHandler('announce_training', choosing_date)],
             states={
                 1 : [
-                    CallbackQueryHandler(write_message),
+                    CallbackQueryHandler(page_change, pattern='^-?[0-9]{0,10}$' ),
+                    CallbackQueryHandler(write_message, pattern='^([1-9]|([012][0-9])|(3[01]))-([0]{0,1}[1-9]|1[012])-\d\d\d\d (20|21|22|23|[0-1]?\d):[0-5]?\d:[0-5]?\d$'),
                     ], 
                 2 : [MessageHandler(Filters.text & ~Filters.command ,confirm_message)],
                 3 : [

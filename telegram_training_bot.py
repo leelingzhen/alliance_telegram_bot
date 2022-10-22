@@ -63,15 +63,25 @@ def send_typing_action(func):
     return command_func
 
 #helper functions
-def print_date_buttons(date_list):
+def print_date_buttons(date_list, page_num: int):
     buttons = list()
     date_list = alliance.active_date_list(date_list, target_date=date.today())
-    for date_option in date_list:
+    for date_option in date_list[page_num * 5:page_num * 5 + 5]:
         date_str = date_option.date().strftime("%d-%b-%y, %A")
         callback_data = date_option.strftime("%d-%m-%Y %H:%M:%S")
         button = InlineKeyboardButton(text=date_str, callback_data=callback_data)
         buttons.append([button])
+
+    scroll_buttons = list()
+
+    if page_num != 0:
+        scroll_buttons.append(InlineKeyboardButton(text="Prev", callback_data=str(-1)))
+    if len(date_list) // 5 != page_num:
+        scroll_buttons.append(InlineKeyboardButton(text="Next", callback_data=str(1)))
+    
+    buttons.append(scroll_buttons)
     reply_markup = InlineKeyboardMarkup(buttons)
+    
     return reply_markup
 
 #telegram functions
@@ -89,7 +99,7 @@ def start(update: Update, context: CallbackContext) -> None:
 
 @send_typing_action
 @restricted
-def choosing_date(update: Update, context: CallbackContext) -> str:
+def choosing_date(update: Update, context: CallbackContext) -> int:
     user = update.effective_user
     logger.info("User %s is filling up his/her attendance...", user.first_name)
 
@@ -97,18 +107,31 @@ def choosing_date(update: Update, context: CallbackContext) -> str:
     context.user_data["attendance"] = attendance
     context.user_data["details"] = details
     context.user_data["player_profiles"] = player_profiles
+    context.user_data["page"] = 0
 
-    reply_markup = print_date_buttons(attendance.columns)
+    reply_markup = print_date_buttons(attendance.columns, 0)
     #case where there are no more future dates
     if reply_markup['inline_keyboard'] == []:
         update.message.reply_text("There are no more further planned trainings. Enjoy your break!🏝🏝")
         return ConversationHandler.END 
     else:
         update.message.reply_text("Choose Training Date:", reply_markup=reply_markup)
-        return "indicate_attendance"
+        return 1
+
+def page_change(update: Update, context: CallbackContext) -> int:
+    query = update.callback_query
+    query.answer()
+    scroll_val = int(query.data)
+
+    context.user_data["page"] += scroll_val
+    reply_markup = print_date_buttons(context.user_data["attendance"].columns, context.user_data["page"])
+    query.edit_message_reply_markup(
+            reply_markup=reply_markup
+            )
+    return 1
 
 
-def indicate_attendance(update: Update, context: CallbackContext) -> str:
+def indicate_attendance(update: Update, context: CallbackContext) -> int:
     query = update.callback_query
     query.answer()
     user_id = update.effective_user.id
@@ -140,7 +163,7 @@ def indicate_attendance(update: Update, context: CallbackContext) -> str:
             "Would you like to go for training?",
             reply_markup=reply_markup
             )
-    return "update_attendance"
+    return 2
 
 def give_reason(update: Update, context: CallbackContext) -> str:
     query = update.callback_query
@@ -150,7 +173,7 @@ def give_reason(update: Update, context: CallbackContext) -> str:
     query.edit_message_text(
             text="Please write a comment/reason 😏"
             )
-    return "update_attendance"
+    return 2
 
     
 
@@ -274,10 +297,11 @@ def main():
     conv_handler_attendance = ConversationHandler(
             entry_points=[CommandHandler("attendance", choosing_date)],
             states={
-                "indicate_attendance": [
-                    CallbackQueryHandler(indicate_attendance)
+                1 : [
+                    CallbackQueryHandler(page_change, pattern='^-?[0-9]{0,10}$' ),
+                    CallbackQueryHandler(indicate_attendance, pattern='^([1-9]|([012][0-9])|(3[01]))-([0]{0,1}[1-9]|1[012])-\d\d\d\d (20|21|22|23|[0-1]?\d):[0-5]?\d:[0-5]?\d$')
                     ],
-                "update_attendance" : [
+                2 : [
                     CallbackQueryHandler(give_reason, pattern='^' + "No" + '$' ),
                     CallbackQueryHandler(update_attendance, pattern='^' + "Yes" + '$'),
                     MessageHandler(Filters.text & ~Filters.command ,update_attendance)
